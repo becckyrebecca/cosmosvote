@@ -81,7 +81,7 @@ jobs:
       - name: Install cargo-tarpaulin
         run: cargo install cargo-tarpaulin --locked
       - name: Generate coverage report
-        run: cargo tarpaulin --out Xml --output-dir coverage/ --features testutils --exclude-files "*/test*"
+        run: cargo tarpaulin --out Xml --output-dir coverage/ --features testutils --exclude-files "*/test*" --fail-under 80
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         with:
