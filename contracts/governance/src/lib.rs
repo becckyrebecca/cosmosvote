@@ -336,6 +336,8 @@ impl GovernanceContract {
     /// Finalize a proposal after its voting period ends.
     /// Anyone may call this.
     pub fn finalise(env: Env, proposal_id: u64) -> Result<(), ContractError> {
+        Self::assert_ready(&env)?;
+
         let mut proposal = GovernanceStorage::proposal(&env, proposal_id)
             .ok_or(ContractError::ProposalNotFound)?;
 

@@ -405,6 +405,12 @@ cargo test prop_                   # Property-based tests
 
 See [SECURITY.md](./SECURITY.md) for the vulnerability disclosure policy and [docs/security/](./docs/security/) for the full threat model.
 
+### Pause Mechanism
+
+The contract includes a pause mechanism for emergency response. When the contract is **paused**:
+- **Blocked:** `create_proposal`, `cast_vote`, `finalise`.
+- **Allowed:** `execute`, `cancel`, `unpause`, `transfer_admin`, `accept_admin`, `update_quorum`.
+
 Key security properties:
 - `require_auth()` on all state-changing operations
 - Double-vote prevention via persistent `HasVoted` flag
