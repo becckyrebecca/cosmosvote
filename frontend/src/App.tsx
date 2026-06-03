@@ -1,9 +1,10 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import type { Proposal, ProposalState } from './types';
-import { fetchAllProposals, fetchTokenBalance, fetchTokenDecimals } from './api';
+import { fetchAllProposals, fetchTokenBalance, fetchTokenDecimals, checkRpcReachability } from './api';
 import { ProposalCard } from './components/ProposalCard';
 import { ProposalSkeleton } from './components/ProposalSkeleton';
 import { ProposalDetail } from './components/ProposalDetail';
+import { useToast } from './components/ToastContext';
 import { ACTIVE_NETWORK } from './config';
 import { formatTokenAmount } from './utils';
 
@@ -16,9 +17,27 @@ export default function App() {
   const [search, setSearch] = useState('');
   const [stateFilter, setStateFilter] = useState<ProposalState | 'All'>('All');
   const [selected, setSelected] = useState<Proposal | null>(null);
+  const triggerRef = useRef<HTMLElement>(null);
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [tokenBalance, setTokenBalance] = useState<bigint | null>(null);
   const [decimals, setDecimals] = useState<number>(0);
+  const [rpcWarning, setRpcWarning] = useState<string | null>(null);
+
+  const connect = () => {
+    const addr = prompt('Enter your Stellar address (G...):');
+    if (addr?.startsWith('G')) setWalletAddress(addr);
+  };
+
+  const disconnect = () => setWalletAddress(null);
+
+  useEffect(() => {
+    if (!walletAddress) { setTokenBalance(null); return; }
+    fetchTokenBalance(walletAddress).then(setTokenBalance).catch(() => setTokenBalance(null));
+  }, [walletAddress]);
+
+  const refreshProposals = () => {
+    fetchAllProposals().then(setProposals).catch(() => {});
+  };
 
   useEffect(() => {
     Promise.all([fetchAllProposals(), fetchTokenDecimals()])
@@ -28,6 +47,12 @@ export default function App() {
       })
       .catch(e => setError(String(e)))
       .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    checkRpcReachability().catch(error => {
+      setRpcWarning(String(error));
+    });
   }, []);
 
   const filtered = useMemo(() => {
@@ -54,6 +79,12 @@ export default function App() {
               {tokenBalance !== null && (
                 <div style={{ fontSize: '0.75rem', color: '#38bdf8' }}>{formatTokenAmount(tokenBalance, decimals)}</div>
               )}
+              <button
+                onClick={disconnect}
+                style={{ marginTop: '0.25rem', background: 'none', color: '#94a3b8', border: '1px solid #475569', borderRadius: 4, padding: '0.2rem 0.5rem', cursor: 'pointer', fontSize: '0.7rem' }}
+              >
+                Disconnect
+              </button>
             </div>
           ) : (
             <button
@@ -66,6 +97,7 @@ export default function App() {
         </div>
       </header>
 
+      <ErrorBoundary>
       <main style={{ maxWidth: 900, margin: '0 auto', padding: '2rem 1rem' }}>
         {/* Filters */}
         <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
@@ -87,6 +119,12 @@ export default function App() {
             {ALL_STATES.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
         </div>
+
+        {rpcWarning && (
+          <div style={{ background: '#fef3c7', color: '#92400e', border: '1px solid #fde68a', borderRadius: 8, padding: '1rem', marginBottom: '1rem' }}>
+            <strong>RPC warning:</strong> {rpcWarning}
+          </div>
+        )}
 
         {/* Stats bar */}
         <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
@@ -118,10 +156,14 @@ export default function App() {
             <p style={{ textAlign: 'center', color: '#888' }}>No proposals found.</p>
           )}
           {!loading && filtered.map(p => (
-            <ProposalCard key={String(p.id)} proposal={p} onClick={() => setSelected(p)} />
+            <ProposalCard key={String(p.id)} proposal={p} onClick={(e) => {
+              triggerRef.current = e?.currentTarget as HTMLElement ?? null;
+              setSelected(p);
+            }} />
           ))}
         </div>
       </main>
+      </ErrorBoundary>
 
       {selected && (
         <ProposalDetail
@@ -129,6 +171,7 @@ export default function App() {
           decimals={decimals}
           walletAddress={walletAddress}
           onClose={() => setSelected(null)}
+          triggerRef={triggerRef}
         />
       )}
     </div>

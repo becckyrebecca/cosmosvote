@@ -8,7 +8,8 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "lint": "eslint src --ext .ts,.tsx --report-unused-disable-directives --max-warnings 0",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "license-check": "license-checker --onlyAllow 'MIT;Apache-2.0;BSD-2-Clause;BSD-3-Clause;ISC;CC0-1.0;Unlicense;0BSD;Python-2.0' --excludePrivatePackages"
   },
   "dependencies": {
     "@stellar/stellar-sdk": "12.3.0",
@@ -23,6 +24,7 @@
     "@vitejs/plugin-react": "4.3.1",
     "eslint": "8.57.0",
     "eslint-plugin-react-hooks": "4.6.2",
+    "license-checker": "25.0.1",
     "typescript": "5.4.5",
     "vite": "5.3.1"
   }

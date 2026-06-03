@@ -83,3 +83,46 @@ npm run dev
 - Review the [Storage Model](./storage.md)
 - Check the [Error Reference](./errors.md)
 - Browse [Architecture Decision Records](./adr/)
+
+## Promotion Workflow: local → testnet → mainnet
+
+Changes must follow this promotion path before reaching mainnet:
+
+```
+local  →  testnet (staging)  →  mainnet
+```
+
+### Step 1 — Validate locally
+
+```bash
+docker compose up
+docker compose run --rm dev make test
+```
+
+### Step 2 — Deploy to testnet (staging)
+
+```bash
+STELLAR_SECRET_KEY=<testnet-key> ./scripts/deploy_testnet.sh
+```
+
+Record the printed SHA-256 WASM hashes. The CI `testnet-gate` workflow runs this automatically on every push to `main`.
+
+### Step 3 — Promote to mainnet
+
+Only after testnet smoke tests pass:
+
+```bash
+# Dry-run first to preview all commands
+./scripts/deploy_mainnet.sh --dry-run
+
+# Deploy with hash verification
+./scripts/deploy_mainnet.sh \
+  --expected-token-hash <sha256-from-testnet> \
+  --expected-gov-hash   <sha256-from-testnet>
+```
+
+Use `--yes` to skip the interactive prompt in automated pipelines.
+
+### CI gate
+
+The `.github/workflows/testnet-gate.yml` workflow deploys to testnet and runs smoke tests on every merge to `main`. Mainnet deployments are always manual and require the WASM hashes printed by the testnet deployment.

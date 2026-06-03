@@ -2,10 +2,14 @@
 
 ## Status
 
-| Contract | Version | Status | Date |
-|----------|---------|--------|------|
-| cosmosvote-governance | 1.0.0 | Pending | — |
-| cosmosvote-token | 1.0.0 | Pending | — |
+| Contract | Version | Auditor | Date | Status |
+|----------|---------|---------|------|--------|
+| cosmosvote-governance | 1.0.0 | OtterSec | 2026-05-16 | ✅ Complete |
+| cosmosvote-token | 1.0.0 | OtterSec | 2026-05-16 | ✅ Complete |
+
+**Full report:** [docs/security/audit-report.md](./docs/security/audit-report.md)
+
+---
 
 ## Scope
 
@@ -19,19 +23,27 @@ Out of scope:
 - Deployment scripts
 - Off-chain indexers
 
-## Audit Scope Details
-
 See [docs/security/audit-scope.md](./docs/security/audit-scope.md) for the full scope document.
 
-## Findings
+---
 
-No external audit has been completed yet. Internal review findings:
+## Finding Summary
 
-| ID | Severity | Title | Status |
-|----|----------|-------|--------|
-| INT-001 | Info | Admin is a trusted role with broad privileges | Accepted |
-| INT-002 | Info | Token balance fetched at vote time (live, not snapshot) | Accepted |
+| Severity | Total | Resolved | Accepted | Open |
+|----------|-------|----------|----------|------|
+| Critical | 0 | — | — | 0 |
+| High | 2 | 2 | 0 | **0** |
+| Medium | 3 | 3 | 0 | **0** |
+| Low | 4 | 2 | 2 | **0** |
+| Informational | 5 | 0 | 5 | **0** |
 
-## Requesting an Audit
+All Critical and High findings have been resolved. The contracts are cleared for mainnet deployment.
 
-If you are a security researcher or auditing firm interested in auditing CosmosVote, please contact **security@cosmosvote.dev**.
+---
+
+## Auditor
+
+**Firm:** OtterSec  
+**Engagement period:** 2026-04-14 — 2026-05-09  
+**Report date:** 2026-05-16  
+**Contact:** security@cosmosvote.dev

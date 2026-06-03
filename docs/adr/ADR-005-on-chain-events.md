@@ -20,6 +20,20 @@ Emit a Soroban event for every state-changing operation:
 - Admin transferred
 - Contract paused/unpaused
 
+## Event Schemas
+
+| Event | Topics | Data |
+|-------|--------|------|
+| `init` | `gov`, `init` | `(admin: Address, token: Address)` |
+| `created` | `gov`, `created` | `(id: u64, proposer: Address, title: String, quorum: i128, end_time: u64)` |
+| `voted` | `gov`, `voted` | `(id: u64, voter: Address, vote: Vote, weight: i128)` |
+| `final` | `gov`, `final` | `(id: u64, state: ProposalState)` |
+| `exec` | `gov`, `exec` | `(id: u64, admin: Address)` |
+| `cancel` | `gov`, `cancel` | `(id: u64, admin: Address)` |
+| `quorum` | `gov`, `quorum` | `(id: u64, old_quorum: i128, new_quorum: i128)` |
+| `propose` | `gov`, `propose` | `(current_admin: Address, pending_admin: Address)` |
+| `accept` | `gov`, `accept` | `(previous_admin: Address, new_admin: Address)` |
+
 ## Rationale
 
 - Events are cheaper than storage for off-chain consumption

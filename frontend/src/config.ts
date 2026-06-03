@@ -19,6 +19,21 @@ export const NETWORKS: Record<string, NetworkConfig> = {
 export const ACTIVE_NETWORK = (import.meta.env.VITE_NETWORK as string) ?? 'testnet';
 export const config = NETWORKS[ACTIVE_NETWORK] ?? NETWORKS.testnet;
 
+const EXPLORER_BASE: Record<string, string> = {
+  testnet: 'https://stellar.expert/explorer/testnet',
+  mainnet: 'https://stellar.expert/explorer/public',
+};
+
+export const explorerBase = EXPLORER_BASE[ACTIVE_NETWORK] ?? EXPLORER_BASE.testnet;
+
+export function explorerAccountUrl(address: string): string {
+  return `${explorerBase}/account/${address}`;
+}
+
+export function explorerTxUrl(hash: string): string {
+  return `${explorerBase}/tx/${hash}`;
+}
+
 export function validateConfig() {
   const errors: string[] = [];
   

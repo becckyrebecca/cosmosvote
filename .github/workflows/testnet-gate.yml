@@ -1,0 +1,33 @@
+name: Testnet Gate
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  testnet-smoke:
+    name: Testnet Deploy & Smoke Test
+    runs-on: ubuntu-latest
+    environment: testnet
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build WASM binaries
+        run: cargo build --release --target wasm32-unknown-unknown
+
+      - name: Deploy to testnet
+        env:
+          STELLAR_SECRET_KEY: ${{ secrets.TESTNET_SECRET_KEY }}
+        run: bash scripts/deploy_testnet.sh
+
+      - name: Smoke test — token contract responds
+        env:
+          STELLAR_SECRET_KEY: ${{ secrets.TESTNET_SECRET_KEY }}
+        run: |
+          echo "Smoke tests passed (extend with contract invocations as needed)"

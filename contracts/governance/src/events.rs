@@ -35,6 +35,11 @@ impl GovernanceEvents {
         );
     }
 
+    /// Emitted exactly once per proposal when `finalise()` transitions it from
+    /// `Active` to `Passed` or `Rejected`. Off-chain indexers should deduplicate
+    /// on `(proposal_id, "final")` — the idempotency guard in `finalise()`
+    /// prevents a second emission, but indexers processing historical ledgers
+    /// should still treat duplicate events as no-ops.
     pub fn proposal_finalized(env: &Env, proposal_id: u64, state: &ProposalState) {
         env.events().publish(
             (symbol_short!("gov"), symbol_short!("final")),
@@ -70,17 +75,39 @@ impl GovernanceEvents {
         );
     }
 
-    pub fn admin_transfer_initiated(env: &Env, current_admin: &Address, pending_admin: &Address) {
+    pub fn admin_transfer_proposed(env: &Env, current_admin: &Address, pending_admin: &Address) {
         env.events().publish(
-            (symbol_short!("gov"), symbol_short!("admint")),
+            (symbol_short!("gov"), symbol_short!("propose")),
             (current_admin.clone(), pending_admin.clone()),
         );
     }
 
-    pub fn admin_transfer_completed(env: &Env, previous_admin: &Address, new_admin: &Address) {
+    pub fn admin_transfer_accepted(env: &Env, previous_admin: &Address, new_admin: &Address) {
         env.events().publish(
-            (symbol_short!("gov"), symbol_short!("admina")),
+            (symbol_short!("gov"), symbol_short!("accept")),
             (previous_admin.clone(), new_admin.clone()),
+        );
+    }
+
+    pub fn proposal_amended(
+        env: &Env,
+        proposal_id: u64,
+        proposer: &Address,
+        old_title: &String,
+        new_title: &String,
+        old_description: &String,
+        new_description: &String,
+    ) {
+        env.events().publish(
+            (symbol_short!("gov"), symbol_short!("amended")),
+            (
+                proposal_id,
+                proposer.clone(),
+                old_title.clone(),
+                new_title.clone(),
+                old_description.clone(),
+                new_description.clone(),
+            ),
         );
     }
 

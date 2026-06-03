@@ -5,6 +5,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      target: builder          # full toolchain for development
     volumes:
       - .:/app
       - cargo-cache:/usr/local/cargo/registry
@@ -13,16 +14,40 @@ services:
       - STELLAR_RPC_URL=http://stellar-node:8000
       - STELLAR_NETWORK_PASSPHRASE=Standalone Network ; February 2021
     depends_on:
-      - stellar-node
+      stellar-node:
+        condition: service_healthy
     command: bash
+
+  artifacts:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime          # minimal image with WASM artifacts only
+    profiles:
+      - artifacts
 
   stellar-node:
     image: stellar/quickstart:latest
     ports:
-      - "8000:8000"
+      - "8001:8000"
     environment:
       - NETWORK=local
     command: --local --enable-soroban-rpc
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  rpc-proxy:
+    image: nginx:alpine
+    depends_on:
+      - stellar-node
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./docker/rpc-proxy.conf:/etc/nginx/conf.d/default.conf:ro
 
 volumes:
   cargo-cache:

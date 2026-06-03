@@ -46,4 +46,18 @@ impl TokenEvents {
             (old.clone(), new.clone()),
         );
     }
+
+    pub fn delegated(env: &Env, owner: &Address, delegate: &Address) {
+        env.events().publish(
+            (symbol_short!("token"), symbol_short!("delegate")),
+            (owner.clone(), delegate.clone()),
+        );
+    }
+
+    pub fn undelegated(env: &Env, owner: &Address) {
+        env.events().publish(
+            (symbol_short!("token"), symbol_short!("undelegt")),
+            owner.clone(),
+        );
+    }
 }

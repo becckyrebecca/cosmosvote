@@ -117,6 +117,45 @@ To configure these rules via GitHub repository settings:
 7. Ensure **Allow force pushes** is unchecked.
 8. Click **Create** or **Save changes**.
 
+## License Compliance
+
+CosmosVote is Apache 2.0 licensed. All dependencies must use compatible permissive licenses. CI enforces this automatically on every PR.
+
+### Allowed licenses
+
+| License | Rust (cargo-deny) | Frontend (license-checker) |
+|---|---|---|
+| Apache-2.0 | ✅ | ✅ |
+| MIT | ✅ | ✅ |
+| BSD-2-Clause | ✅ | ✅ |
+| BSD-3-Clause | ✅ | ✅ |
+| ISC | ✅ | ✅ |
+| CC0-1.0 | ✅ | ✅ |
+| Zlib | ✅ | — |
+| Unicode-DFS-2016 / Unicode-3.0 | ✅ | — |
+| Unlicense / 0BSD | — | ✅ |
+
+### Denied licenses
+
+GPL-2.0, GPL-3.0, AGPL-3.0, LGPL-2.0, LGPL-2.1, LGPL-3.0, EUPL-1.1, EUPL-1.2, SSPL-1.0, BUSL-1.1 — and any unknown or unlicensed dependency.
+
+### Adding a dependency with an unlisted license
+
+1. Verify the license is permissive and compatible with Apache 2.0.
+2. Add it to the `allow` list in `deny.toml` (Rust) or to `--onlyAllow` in the `license-check` script in `frontend/package.json`.
+3. Add a note in your PR explaining the addition.
+
+### Running checks locally
+
+```bash
+# Rust
+cargo install cargo-deny --locked
+cargo deny check licenses
+
+# Frontend
+cd frontend && npm ci && npm run license-check
+```
+
 ## Coding Standards
 
 - Follow existing code style and module structure
@@ -133,6 +172,7 @@ To configure these rules via GitHub repository settings:
 - Property-based tests go in `src/prop_tests.rs`
 - Use `env.mock_all_auths()` in tests
 - Test both success and failure paths for every public function
+- **Coverage Target:** All contributions must maintain at least **80% code coverage**. The CI will fail if coverage drops below this threshold.
 
 ## Security
 
