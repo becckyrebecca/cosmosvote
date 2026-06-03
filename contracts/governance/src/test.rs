@@ -2,7 +2,7 @@
 
 #![cfg(test)]
 
-use soroban_sdk::{testutils::Address as _, Address, Env, String};
+use soroban_sdk::{contract, contractimpl, testutils::Address as _, Address, Env, String};
 
 use crate::{
     types::{ContractError, ProposalState, Vote},
@@ -22,15 +22,95 @@ fn setup(env: &Env) -> (GovernanceContractClient<'_>, TokenContractClient<'_>, A
 
     let token_id = env.register(TokenContract, ());
     let token = TokenContractClient::new(env, &token_id);
-    token.initialize(&admin, &1_000_000_000i128);
+    token.initialize(
+        &admin,
+        &1_000_000_000i128,
+        &String::from_str(env, "CosmosVote"),
+        &String::from_str(env, "VOTE"),
+        &7u32,
+    );
     token.mint(&admin, &voter, &10_000_000i128);
     token.mint(&admin, &voter2, &5_000_000i128);
 
     let gov_id = env.register(GovernanceContract, ());
     let gov = GovernanceContractClient::new(env, &gov_id);
-    gov.initialize(initialize(&admin, &token_id, &0i128, &0u64, &false)admin, &token_id, &0i128, &0u64, &0u32, &false);
+    gov.initialize(&admin, &token_id, &0i128, &0u64, &0u32, &false, &None);
 
     (gov, token, admin, voter, voter2)
+}
+
+#[soroban_sdk::contracttype]
+#[derive(Clone)]
+pub enum MaliciousTokenInstanceKey {
+    Governance,
+    ProposalId,
+    Attacker,
+    Balance(Address),
+    AttackSucceeded,
+}
+
+pub struct MaliciousTokenStorage;
+
+impl MaliciousTokenStorage {
+    pub fn set_governance(env: &Env, v: &Address) {
+        env.storage().instance().set(&MaliciousTokenInstanceKey::Governance, v);
+    }
+
+    pub fn governance(env: &Env) -> Address {
+        env.storage().instance().get(&MaliciousTokenInstanceKey::Governance).unwrap()
+    }
+
+    pub fn set_proposal_id(env: &Env, v: &u64) {
+        env.storage().instance().set(&MaliciousTokenInstanceKey::ProposalId, v);
+    }
+
+    pub fn proposal_id(env: &Env) -> u64 {
+        env.storage().instance().get(&MaliciousTokenInstanceKey::ProposalId).unwrap_or(0)
+    }
+
+    pub fn set_attacker(env: &Env, v: &Address) {
+        env.storage().instance().set(&MaliciousTokenInstanceKey::Attacker, v);
+    }
+
+    pub fn attacker(env: &Env) -> Address {
+        env.storage().instance().get(&MaliciousTokenInstanceKey::Attacker).unwrap()
+    }
+
+    pub fn set_balance(env: &Env, owner: &Address, v: &i128) {
+        env.storage().persistent().set(&MaliciousTokenInstanceKey::Balance(owner.clone()), v);
+    }
+
+    pub fn balance(env: &Env, owner: &Address) -> i128 {
+        env.storage().persistent().get(&MaliciousTokenInstanceKey::Balance(owner.clone())).unwrap_or(0)
+    }
+
+    pub fn set_attack_succeeded(env: &Env, v: &bool) {
+        env.storage().instance().set(&MaliciousTokenInstanceKey::AttackSucceeded, v);
+    }
+
+    pub fn attack_succeeded(env: &Env) -> bool {
+        env.storage().instance().get(&MaliciousTokenInstanceKey::AttackSucceeded).unwrap_or(false)
+    }
+}
+
+#[contract]
+pub struct MaliciousTokenContract;
+
+#[contractimpl]
+impl MaliciousTokenContract {
+    pub fn balance_at(env: Env, owner: Address, _ledger: u64) -> i128 {
+        let attacker = MaliciousTokenStorage::attacker(&env);
+        if owner == attacker {
+            let gov = GovernanceContractClient::new(&env, &MaliciousTokenStorage::governance(&env));
+            let record = gov.try_cast_vote(&owner, &MaliciousTokenStorage::proposal_id(&env), &Vote::Yes);
+            MaliciousTokenStorage::set_attack_succeeded(&env, &record.is_ok());
+        }
+        MaliciousTokenStorage::balance(&env, &owner)
+    }
+
+    pub fn total_supply(_env: Env) -> i128 {
+        0
+    }
 }
 
 #[test]
@@ -54,6 +134,7 @@ fn make_proposal(gov: &GovernanceContractClient, env: &Env, proposer: &Address) 
         &String::from_str(env, "Upgrade the CosmosVote protocol to v2"),
         &5_000_000i128,
         &604_800u64,
+        &None,
     )
 }
 
@@ -68,11 +149,17 @@ fn test_initialize_success() {
     let admin = Address::generate(&env);
     let token_id = env.register(TokenContract, ());
     let token = TokenContractClient::new(&env, &token_id);
-    token.initialize(&admin, &1_000_000_000i128);
+    token.initialize(
+        &admin,
+        &1_000_000_000i128,
+        &String::from_str(&env, "CosmosVote"),
+        &String::from_str(&env, "VOTE"),
+        &7u32,
+    );
 
     let gov_id = env.register(GovernanceContract, ());
     let gov = GovernanceContractClient::new(&env, &gov_id);
-    gov.initialize(initialize(&admin, &token_id, &0i128, &0u64, &false)admin, &token_id, &0i128, &0u64, &0u32, &false);
+    gov.initialize(&admin, &token_id, &0i128, &0u64, &0u32, &false, &None);
 
     assert_eq!(gov.admin(), admin);
     assert_eq!(gov.proposal_count(), 0);
@@ -83,7 +170,7 @@ fn test_initialize_double_init_fails() {
     let env = Env::default();
     let (gov, _, admin, _, _) = setup(&env);
     let token_id = env.register(TokenContract, ());
-    let result = gov.try_initialize(initialize(&admin, &token_id, &0i128, &0u64, &false)admin, &token_id, &0i128, &0u64, &0u32, &false);
+    let result = gov.try_initialize(&admin, &token_id, &0i128, &0u64, &0u32, &false, &None);
     assert_eq!(result, Err(Ok(ContractError::AlreadyInitialized)));
 }
 
@@ -120,6 +207,7 @@ fn test_create_proposal_empty_title_fails() {
         &String::from_str(&env, "desc"),
         &1_000_000i128,
         &3600u64,
+        &None,
     );
     assert_eq!(result, Err(Ok(ContractError::InvalidTitle)));
 }
@@ -134,6 +222,7 @@ fn test_create_proposal_zero_quorum_fails() {
         &String::from_str(&env, "desc"),
         &0i128,
         &3600u64,
+        &None,
     );
     assert_eq!(result, Err(Ok(ContractError::InvalidQuorum)));
 }
@@ -148,6 +237,7 @@ fn test_create_proposal_duration_too_short_fails() {
         &String::from_str(&env, "desc"),
         &1_000_000i128,
         &10u64,
+        &None,
     );
     assert_eq!(result, Err(Ok(ContractError::InvalidDurationRange)));
 }
@@ -162,6 +252,7 @@ fn test_create_proposal_quorum_exceeds_supply_fails() {
         &String::from_str(&env, "desc"),
         &2_000_000_000i128,
         &3600u64,
+        &None,
     );
     assert_eq!(result, Err(Ok(ContractError::QuorumExceedsSupply)));
 }
@@ -175,13 +266,19 @@ fn test_create_proposal_below_quorum_floor_fails() {
 
     let token_id = env.register(TokenContract, ());
     let token = TokenContractClient::new(&env, &token_id);
-    token.initialize(&admin, &1_000_000i128); // 1M supply
+    token.initialize(
+        &admin,
+        &1_000_000i128,
+        &String::from_str(&env, "CosmosVote"),
+        &String::from_str(&env, "VOTE"),
+        &7u32,
+    ); // 1M supply
     token.mint(&admin, &voter, &1_000_000i128);
 
     let gov_id = env.register(GovernanceContract, ());
     let gov = GovernanceContractClient::new(&env, &gov_id);
     // 10% quorum floor (1000 bps)
-    gov.initialize(&admin, &token_id, &0i128, &0u64, &1000u32, &false);
+    gov.initialize(&admin, &token_id, &0i128, &0u64, &1000u32, &false, &None);
 
     // 10% of 1M is 100k. 50k should fail.
     let result = gov.try_create_proposal(
@@ -190,6 +287,7 @@ fn test_create_proposal_below_quorum_floor_fails() {
         &String::from_str(&env, "desc"),
         &50_000i128,
         &3600u64,
+        &None,
     );
     assert_eq!(result, Err(Ok(ContractError::QuorumBelowFloor)));
 }
@@ -231,6 +329,44 @@ fn test_cast_vote_abstain() {
 }
 
 #[test]
+fn test_cast_vote_reentrancy_via_token_balance_at_is_blocked() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let attacker = Address::generate(&env);
+
+    let token_id = env.register(MaliciousTokenContract, ());
+    MaliciousTokenStorage::set_attacker(&env, &attacker);
+    MaliciousTokenStorage::set_balance(&env, &attacker, &10_000_000i128);
+
+    let gov_id = env.register(GovernanceContract, ());
+    let gov = GovernanceContractClient::new(&env, &gov_id);
+    gov.initialize(&admin, &token_id, &0i128, &0u64, &0u32, &false);
+
+    MaliciousTokenStorage::set_governance(&env, &gov_id);
+
+    let proposal_id = gov.create_proposal(
+        &attacker,
+        &String::from_str(&env, "Attack proposal"),
+        &String::from_str(&env, "Attempt reentrancy during vote"),
+        &1_000_000i128,
+        &604_800u64,
+    )
+    .expect("should create proposal");
+
+    MaliciousTokenStorage::set_proposal_id(&env, &proposal_id);
+
+    gov.cast_vote(&attacker, &proposal_id, &Vote::Yes)
+        .expect("outer vote should succeed");
+
+    let proposal = gov.get_proposal(&proposal_id);
+    assert_eq!(proposal.votes_yes, 10_000_000i128);
+    assert_eq!(proposal.votes_no, 0);
+    assert!(!MaliciousTokenStorage::attack_succeeded(&env), "reentrant vote must not succeed");
+}
+
+#[test]
 fn test_double_vote_fails() {
     let env = Env::default();
     let (gov, _, _, voter, _) = setup(&env);
@@ -246,7 +382,7 @@ fn test_vote_after_period_fails() {
     let (gov, _, _, voter, _) = setup(&env);
     let id = make_proposal(&gov, &env, &voter);
     let proposal = gov.get_proposal(&id);
-    env.ledger().with_mut(|l| l.timestamp = proposal.end_time + 1);
+    env.ledger().set_timestamp(proposal.end_time + 1);
     let result = gov.try_cast_vote(&voter, &id, &Vote::Yes);
     assert_eq!(result, Err(Ok(ContractError::VotingPeriodEnded)));
 }
@@ -272,7 +408,7 @@ fn test_finalise_passed() {
     let id = make_proposal(&gov, &env, &voter);
     gov.cast_vote(&voter, &id, &Vote::Yes);
     let proposal = gov.get_proposal(&id);
-    env.ledger().with_mut(|l| l.timestamp = proposal.end_time + 1);
+    env.ledger().set_timestamp(proposal.end_time + 1);
     gov.finalise(&id);
     let updated = gov.get_proposal(&id);
     assert_eq!(updated.state, ProposalState::Passed);
@@ -286,7 +422,7 @@ fn test_finalise_rejected_quorum_not_met() {
     // voter2 has 5M, quorum is 5M but votes_yes must exceed votes_no
     gov.cast_vote(&voter2, &id, &Vote::No);
     let proposal = gov.get_proposal(&id);
-    env.ledger().with_mut(|l| l.timestamp = proposal.end_time + 1);
+    env.ledger().set_timestamp(proposal.end_time + 1);
     gov.finalise(&id);
     let updated = gov.get_proposal(&id);
     assert_eq!(updated.state, ProposalState::Rejected);
@@ -302,6 +438,26 @@ fn test_finalise_voting_still_open_fails() {
 }
 
 #[test]
+fn test_finalise_repeated_call_returns_not_active() {
+    // Issue #73: finalise() is idempotent — the ProposalNotActive guard ensures
+    // that only the first call mutates state; all subsequent calls are no-ops.
+    let env = Env::default();
+    let (gov, _, _, voter, _) = setup(&env);
+    let id = make_proposal(&gov, &env, &voter);
+    gov.cast_vote(&voter, &id, &Vote::Yes);
+    let proposal = gov.get_proposal(&id);
+    env.ledger().with_mut(|l| l.timestamp = proposal.end_time + 1);
+
+    // First call succeeds and transitions state
+    gov.finalise(&id);
+    assert_eq!(gov.get_proposal(&id).state, ProposalState::Passed);
+
+    // All subsequent calls are rejected — no state corruption possible
+    let result = gov.try_finalise(&id);
+    assert_eq!(result, Err(Ok(ContractError::ProposalNotActive)));
+}
+
+#[test]
 fn test_finalise_tie_rejected() {
     let env = Env::default();
     let (gov, token, admin, voter, voter2) = setup(&env);
@@ -313,11 +469,12 @@ fn test_finalise_tie_rejected() {
         &String::from_str(&env, "Equal yes and no votes"),
         &5_000_000i128,
         &3600u64,
+        &None,
     );
     gov.cast_vote(&voter, &id, &Vote::Yes);
     gov.cast_vote(&voter2, &id, &Vote::No);
     let proposal = gov.get_proposal(&id);
-    env.ledger().with_mut(|l| l.timestamp = proposal.end_time + 1);
+    env.ledger().set_timestamp(proposal.end_time + 1);
     gov.finalise(&id);
     let updated = gov.get_proposal(&id);
     assert_eq!(updated.state, ProposalState::Rejected);
@@ -334,7 +491,7 @@ fn test_execute_passed_proposal() {
     let id = make_proposal(&gov, &env, &voter);
     gov.cast_vote(&voter, &id, &Vote::Yes);
     let proposal = gov.get_proposal(&id);
-    env.ledger().with_mut(|l| l.timestamp = proposal.end_time + 1);
+    env.ledger().set_timestamp(proposal.end_time + 1);
     gov.finalise(&id);
     gov.execute(&admin, &id);
     let updated = gov.get_proposal(&id);
@@ -379,7 +536,7 @@ fn test_transfer_admin() {
     let (gov, _, admin, voter, _) = setup(&env);
     
     // Step 1: Transfer admin initiates two-step transfer
-    gov.transfer_admin(&admin, &voter);
+    gov.propose_admin(&admin, &voter);
     
     // Admin should still be the old admin
     assert_eq!(gov.admin(), admin);
@@ -394,7 +551,7 @@ fn test_accept_admin() {
     let (gov, _, admin, voter, _) = setup(&env);
     
     // Step 1: Transfer admin initiates two-step transfer
-    gov.transfer_admin(&admin, &voter);
+    gov.propose_admin(&admin, &voter);
     
     // Step 2: New admin accepts the transfer
     gov.accept_admin(&voter);
@@ -411,7 +568,10 @@ fn test_accept_admin_fails_for_non_pending() {
     let env = Env::default();
     let (gov, _, admin, voter, voter2) = setup(&env);
     
-    // Try to accept admin when not pending
+    // Initiate transfer to voter
+    gov.transfer_admin(&admin, &voter);
+    
+    // voter2 is not the pending admin — should fail with NotPendingAdmin
     let result = gov.try_accept_admin(&voter2);
     assert_eq!(result, Err(Ok(ContractError::NotPendingAdmin)));
 }
@@ -422,7 +582,7 @@ fn test_transfer_admin_prevents_accidental_loss() {
     let (gov, _, admin, voter, voter2) = setup(&env);
     
     // Transfer admin to voter
-    gov.transfer_admin(&admin, &voter);
+    gov.propose_admin(&admin, &voter);
     
     // Old admin is still the admin until transfer is accepted
     assert_eq!(gov.admin(), admin);
@@ -437,6 +597,20 @@ fn test_transfer_admin_prevents_accidental_loss() {
 }
 
 #[test]
+fn test_transfer_admin_zero_address_fails() {
+    let env = Env::default();
+    let (gov, _, admin, _, _) = setup(&env);
+
+    // The all-zeros Stellar public key — no valid keypair can sign for it.
+    let zero_addr = Address::from_string(
+        &env,
+        &String::from_str(&env, "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF"),
+    );
+    let result = gov.try_transfer_admin(&admin, &zero_addr);
+    assert_eq!(result, Err(Ok(ContractError::InvalidNewAdmin)));
+}
+
+#[test]
 fn test_pause_unpause() {
     let env = Env::default();
     let (gov, _, admin, voter, _) = setup(&env);
@@ -447,12 +621,64 @@ fn test_pause_unpause() {
         &String::from_str(&env, "desc"),
         &1_000_000i128,
         &3600u64,
+        &None,
     );
     assert_eq!(result, Err(Ok(ContractError::ContractPaused)));
     gov.unpause(&admin);
     // Should succeed after unpause
     let id = make_proposal(&gov, &env, &voter);
     assert_eq!(id, 0);
+}
+
+#[test]
+fn test_pause_blocks_cast_vote() {
+    let env = Env::default();
+    let (gov, _, admin, voter, _) = setup(&env);
+    let id = make_proposal(&gov, &env, &voter);
+    
+    gov.pause(&admin);
+    let result = gov.try_cast_vote(&voter, &id, &Vote::Yes);
+    assert_eq!(result, Err(Ok(ContractError::ContractPaused)));
+}
+
+#[test]
+fn test_pause_blocks_finalise() {
+    let env = Env::default();
+    let (gov, _, admin, voter, _) = setup(&env);
+    let id = make_proposal(&gov, &env, &voter);
+    
+    // Jump to end of voting period
+    env.ledger().set_timestamp(env.ledger().timestamp() + 604_801);
+    
+    gov.pause(&admin);
+    let result = gov.try_finalise(&id);
+    assert_eq!(result, Err(Ok(ContractError::ContractPaused)));
+}
+
+#[test]
+fn test_pause_does_not_block_execute_cancel() {
+    let env = Env::default();
+    let (gov, _, admin, voter, _) = setup(&env);
+    let id = make_proposal(&gov, &env, &voter);
+    
+    gov.pause(&admin);
+    
+    // Cancel should still work (admin emergency action)
+    gov.cancel(&admin, &id);
+    let proposal = gov.get_proposal(&id);
+    assert_eq!(proposal.state, ProposalState::Cancelled);
+    
+    // Execute should also work if it was passed
+    gov.unpause(&admin);
+    let id2 = make_proposal(&gov, &env, &voter);
+    gov.cast_vote(&voter, &id2, &Vote::Yes);
+    env.ledger().set_timestamp(env.ledger().timestamp() + 604_801);
+    gov.finalise(&id2);
+    
+    gov.pause(&admin);
+    gov.execute(&admin, &id2);
+    let proposal2 = gov.get_proposal(&id2);
+    assert_eq!(proposal2.state, ProposalState::Executed);
 }
 
 #[test]
@@ -463,6 +689,18 @@ fn test_update_quorum() {
     gov.update_quorum(&admin, &id, &1_000_000i128);
     let proposal = gov.get_proposal(&id);
     assert_eq!(proposal.quorum, 1_000_000);
+
+    // Verify event
+    let events = env.events().all();
+    let last_event = events.last().unwrap();
+    assert_eq!(
+        last_event,
+        (
+            gov.address.clone(),
+            (soroban_sdk::symbol_short!("gov"), soroban_sdk::symbol_short!("quorum")).into_val(&env),
+            (id, 5_000_000i128, 1_000_000i128).into_val(&env)
+        )
+    );
 }
 
 #[test]
@@ -479,6 +717,33 @@ fn test_update_quorum_with_votes_fails() {
     assert_eq!(result, Err(Ok(ContractError::QuorumUpdateNotAllowed)));
 }
 
+#[test]
+fn test_update_quorum_nonexistent_proposal_fails() {
+    let env = Env::default();
+    let (gov, _, admin, _, _) = setup(&env);
+    let result = gov.try_update_quorum(&admin, &999u64, &1_000_000i128);
+    assert_eq!(result, Err(Ok(ContractError::ProposalNotFound)));
+}
+
+#[test]
+fn test_update_quorum_zero_fails() {
+    let env = Env::default();
+    let (gov, _, admin, voter, _) = setup(&env);
+    let id = make_proposal(&gov, &env, &voter);
+    let result = gov.try_update_quorum(&admin, &id, &0i128);
+    assert_eq!(result, Err(Ok(ContractError::InvalidQuorum)));
+}
+
+#[test]
+fn test_update_quorum_exceeds_supply_fails() {
+    let env = Env::default();
+    let (gov, _, admin, voter, _) = setup(&env);
+    let id = make_proposal(&gov, &env, &voter);
+    // Supply is 1_000_000_000 (from setup)
+    let result = gov.try_update_quorum(&admin, &id, &1_000_000_001i128);
+    assert_eq!(result, Err(Ok(ContractError::QuorumExceedsSupply)));
+}
+
 // ---------------------------------------------------------------------------
 // Proposal not found
 // ---------------------------------------------------------------------------
@@ -488,7 +753,7 @@ fn test_get_nonexistent_proposal_fails() {
     let env = Env::default();
     let (gov, _, _, _, _) = setup(&env);
     let result = gov.try_get_proposal(&999u64);
-    assert_eq!(result, Err(Ok(ContractError::ProposalNotFound)));
+    assert!(matches!(result, Err(Ok(ContractError::ProposalNotFound))));
 }
 
 // ---------------------------------------------------------------------------
@@ -562,5 +827,275 @@ fn test_get_proposals_by_state() {
     
     let cancelled = gov.get_proposals_by_state(&ProposalState::Cancelled, &0, &10);
     assert_eq!(cancelled.len(), 1);
-    assert_eq!(cancelled.get(0).unwrap().id, 1);
+    assert_eq!(cancelled.get(0).unwrap().id, 1); // .
+}
+
+// ---------------------------------------------------------------------------
+// Treasury disbursement via governance (#118)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_execute_with_treasury_action() {
+    use crate::types::{TreasuryAction, TreasuryAsset};
+
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let voter = Address::generate(&env);
+    let recipient = Address::generate(&env);
+
+    let token_id = env.register(cosmosvote_token::TokenContract, ());
+    let token = cosmosvote_token::TokenContractClient::new(&env, &token_id);
+    token.initialize(&admin, &1_000_000_000i128);
+    token.mint(&admin, &voter, &10_000_000i128);
+
+    let gov_id = env.register(GovernanceContract, ());
+    let gov = GovernanceContractClient::new(&env, &gov_id);
+    gov.initialize(&admin, &token_id, &0i128, &0u64, &0u32, &false, &None);
+
+    let action = TreasuryAction {
+        recipient: recipient.clone(),
+        amount: 1_000i128,
+        asset: TreasuryAsset::Token(token_id.clone()),
+    };
+
+    let id = gov.create_proposal(
+        &voter,
+        &String::from_str(&env, "Treasury Disbursement"),
+        &String::from_str(&env, "Transfer 1000 tokens to recipient"),
+        &5_000_000i128,
+        &604_800u64,
+        &Some(action),
+    );
+
+    gov.cast_vote(&voter, &id, &Vote::Yes);
+    let proposal = gov.get_proposal(&id);
+    env.ledger().with_mut(|l| l.timestamp = proposal.end_time + 1);
+    gov.finalise(&id);
+
+    // treasury_action is stored on the proposal
+    let p = gov.get_proposal(&id);
+    assert!(p.treasury_action.is_some());
+    assert_eq!(p.state, ProposalState::Passed);
+}
+
+// ---------------------------------------------------------------------------
+// amend_proposal
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_amend_proposal_success() {
+    let env = Env::default();
+    let (gov, _, _, voter, _) = setup(&env);
+    let id = make_proposal(&gov, &env, &voter);
+
+    gov.amend_proposal(
+        &voter,
+        &id,
+        &String::from_str(&env, "Updated Title"),
+        &String::from_str(&env, "Updated description with more detail"),
+    );
+
+    let proposal = gov.get_proposal(&id);
+    assert_eq!(proposal.title, String::from_str(&env, "Updated Title"));
+    assert_eq!(proposal.description, String::from_str(&env, "Updated description with more detail"));
+}
+
+#[test]
+fn test_amend_proposal_not_proposer_fails() {
+    let env = Env::default();
+    let (gov, _, _, voter, voter2) = setup(&env);
+    let id = make_proposal(&gov, &env, &voter);
+
+    let result = gov.try_amend_proposal(
+        &voter2,
+        &id,
+        &String::from_str(&env, "Hijacked Title"),
+        &String::from_str(&env, "desc"),
+    );
+    assert_eq!(result, Err(Ok(ContractError::NotProposer)));
+}
+
+#[test]
+fn test_amend_proposal_after_votes_cast_fails() {
+    let env = Env::default();
+    let (gov, _, _, voter, voter2) = setup(&env);
+    let id = make_proposal(&gov, &env, &voter);
+
+    gov.cast_vote(&voter2, &id, &Vote::Yes);
+
+    let result = gov.try_amend_proposal(
+        &voter,
+        &id,
+        &String::from_str(&env, "New Title"),
+        &String::from_str(&env, "desc"),
+    );
+    assert_eq!(result, Err(Ok(ContractError::VotesAlreadyCast)));
+}
+
+#[test]
+fn test_amend_proposal_not_active_fails() {
+    let env = Env::default();
+    let (gov, _, admin, voter, _) = setup(&env);
+    let id = make_proposal(&gov, &env, &voter);
+
+    gov.cancel(&admin, &id);
+
+    let result = gov.try_amend_proposal(
+        &voter,
+        &id,
+        &String::from_str(&env, "New Title"),
+        &String::from_str(&env, "desc"),
+    );
+    assert_eq!(result, Err(Ok(ContractError::ProposalNotActive)));
+}
+
+#[test]
+fn test_amend_proposal_invalid_title_fails() {
+    let env = Env::default();
+    let (gov, _, _, voter, _) = setup(&env);
+    let id = make_proposal(&gov, &env, &voter);
+
+    let result = gov.try_amend_proposal(
+        &voter,
+        &id,
+        &String::from_str(&env, ""),
+        &String::from_str(&env, "valid desc"),
+    );
+    assert_eq!(result, Err(Ok(ContractError::InvalidTitle)));
+}
+
+#[test]
+fn test_amend_proposal_invalid_description_fails() {
+    let env = Env::default();
+    let (gov, _, _, voter, _) = setup(&env);
+    let id = make_proposal(&gov, &env, &voter);
+
+    let result = gov.try_amend_proposal(
+        &voter,
+        &id,
+        &String::from_str(&env, "Valid Title"),
+        &String::from_str(&env, ""),
+    );
+    assert_eq!(result, Err(Ok(ContractError::InvalidDescription)));
+}
+
+// ---------------------------------------------------------------------------
+// Double-action guards (Issue #69)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_finalise_twice_fails() {
+    let env = Env::default();
+    let (gov, _, _, voter, _) = setup(&env);
+    let id = make_proposal(&gov, &env, &voter);
+    gov.cast_vote(&voter, &id, &Vote::Yes);
+    let proposal = gov.get_proposal(&id);
+    env.ledger().with_mut(|l| l.timestamp = proposal.end_time + 1);
+    gov.finalise(&id);
+    let result = gov.try_finalise(&id);
+    assert_eq!(result, Err(Ok(ContractError::ProposalNotActive)));
+}
+
+#[test]
+fn test_execute_twice_fails() {
+    let env = Env::default();
+    let (gov, _, admin, voter, _) = setup(&env);
+    let id = make_proposal(&gov, &env, &voter);
+    gov.cast_vote(&voter, &id, &Vote::Yes);
+    let proposal = gov.get_proposal(&id);
+    env.ledger().with_mut(|l| l.timestamp = proposal.end_time + 1);
+    gov.finalise(&id);
+    gov.execute(&admin, &id);
+    let result = gov.try_execute(&admin, &id);
+    assert_eq!(result, Err(Ok(ContractError::ProposalNotPassed)));
+}
+
+#[test]
+fn test_cancel_already_cancelled_fails() {
+    let env = Env::default();
+    let (gov, _, admin, voter, _) = setup(&env);
+    let id = make_proposal(&gov, &env, &voter);
+    gov.cancel(&admin, &id);
+    let result = gov.try_cancel(&admin, &id);
+    assert_eq!(result, Err(Ok(ContractError::ProposalNotActive)));
+}
+
+// ---------------------------------------------------------------------------
+// Delegation
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_delegator_cannot_vote_directly() {
+    let env = Env::default();
+    let (gov, token, _, voter, voter2) = setup(&env);
+
+    // voter delegates to voter2
+    token.delegate(&voter, &voter2);
+
+    let id = make_proposal(&gov, &env, &voter2);
+
+    // voter has delegated away — cannot vote directly
+    let result = gov.try_cast_vote(&voter, &id, &Vote::Yes);
+    assert_eq!(result, Err(Ok(ContractError::NoVotingPower)));
+}
+
+#[test]
+fn test_delegate_can_vote_with_own_weight() {
+    let env = Env::default();
+    let (gov, token, _, voter, voter2) = setup(&env);
+
+    // voter delegates to voter2
+    token.delegate(&voter, &voter2);
+
+    let id = make_proposal(&gov, &env, &voter2);
+
+    // voter2 votes with their own balance (5M)
+    gov.cast_vote(&voter2, &id, &Vote::Yes);
+    let record = gov.get_vote(&id, &voter2);
+    assert_eq!(record.weight, 5_000_000);
+}
+
+#[test]
+fn test_undelegate_restores_voting_power() {
+    let env = Env::default();
+    let (gov, token, _, voter, voter2) = setup(&env);
+
+    // voter delegates then undelegates
+    token.delegate(&voter, &voter2);
+    token.undelegate(&voter);
+
+    let id = make_proposal(&gov, &env, &voter2);
+
+    // voter can now vote again
+    gov.cast_vote(&voter, &id, &Vote::Yes);
+    assert!(gov.has_voted(&id, &voter));
+}
+
+#[test]
+fn test_bump_proposal_extends_ttl() {
+    let env = Env::default();
+    let (gov, _, _, voter, _) = setup(&env);
+    let id = make_proposal(&gov, &env, &voter);
+
+    // bump should succeed for existing proposal
+    let result = gov.try_bump_proposal(&id);
+    assert_eq!(result, Ok(()));
+
+    // proposal should still be retrievable
+    let proposal = gov.get_proposal(&id);
+    assert_eq!(proposal.id, id);
+}
+
+#[test]
+fn test_proposal_count_persisted() {
+    let env = Env::default();
+    let (gov, _, _, voter, _) = setup(&env);
+
+    // create proposals and ensure count increments
+    for i in 0..3 {
+        let id = make_proposal(&gov, &env, &voter);
+        assert_eq!(id, i);
+    }
+    assert_eq!(gov.proposal_count(), 3);
 }

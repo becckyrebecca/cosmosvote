@@ -12,7 +12,7 @@ mod types;
 #[cfg(test)]
 mod test;
 
-use soroban_sdk::{contract, contractimpl, Address, Env, String};
+use soroban_sdk::{contract, contractimpl, Address, Env, String, Vec};
 
 use events::TokenEvents;
 use storage::TokenStorage;
@@ -73,6 +73,10 @@ impl TokenContract {
 
     /// Alias for balance (SEP-41 compatibility).
     pub fn balance_of(env: Env, owner: Address) -> i128 {
+        TokenStorage::balance(&env, &owner)
+    }
+
+    pub fn balance_at(env: Env, owner: Address, _ledger: u64) -> i128 {
         TokenStorage::balance(&env, &owner)
     }
 
@@ -255,11 +259,70 @@ impl TokenContract {
     }
 
     // -----------------------------------------------------------------------
+    // Delegation
+    // -----------------------------------------------------------------------
+
+    /// Delegate voting power from `owner` to `delegate_to`.
+    ///
+    /// The owner's token balance is retained; only voting weight is delegated.
+    /// An owner can only delegate to one address at a time.
+    pub fn delegate(
+        env: Env,
+        owner: Address,
+        delegate_to: Address,
+    ) -> Result<(), ContractError> {
+        owner.require_auth();
+        if owner == delegate_to {
+            return Err(ContractError::CannotDelegateSelf);
+        }
+        if TokenStorage::delegation(&env, &owner).is_some() {
+            return Err(ContractError::AlreadyDelegating);
+        }
+        TokenStorage::set_delegation(&env, &owner, &delegate_to);
+        TokenEvents::delegated(&env, &owner, &delegate_to);
+        Ok(())
+    }
+
+    /// Remove the delegation from `owner`, reclaiming their own voting power.
+    pub fn undelegate(env: Env, owner: Address) -> Result<(), ContractError> {
+        owner.require_auth();
+        if TokenStorage::delegation(&env, &owner).is_none() {
+            return Err(ContractError::NotDelegating);
+        }
+        TokenStorage::remove_delegation(&env, &owner);
+        TokenEvents::undelegated(&env, &owner);
+        Ok(())
+    }
+
+    /// Returns the current delegate for `owner`, or `None`.
+    pub fn get_delegation(env: Env, owner: Address) -> Option<Address> {
+        TokenStorage::delegation(&env, &owner)
+    }
+
+    /// Returns the voting weight for `voter`: their own balance plus the balances
+    /// of all `delegators` who have delegated to them.
+    ///
+    /// Governance calls this with the list of delegators it tracks off-chain.
+    /// For on-chain use, governance accumulates delegated weight by checking each
+    /// potential delegator's stored delegation target.
+    pub fn get_delegated_weight(env: Env, voter: Address, delegators: soroban_sdk::Vec<Address>) -> i128 {
+        let mut weight = TokenStorage::balance(&env, &voter);
+        for delegator in delegators.iter() {
+            if let Some(delegate) = TokenStorage::delegation(&env, &delegator) {
+                if delegate == voter {
+                    weight = weight.saturating_add(TokenStorage::balance(&env, &delegator));
+                }
+            }
+        }
+        weight
+    }
+
+    // -----------------------------------------------------------------------
     // Admin
     // -----------------------------------------------------------------------
 
-    /// Transfer admin privileges. Current admin only.
-    pub fn transfer_admin(
+    /// Initiate a two-step admin transfer. Current admin only.
+    pub fn propose_admin(
         env: Env,
         admin: Address,
         new_admin: Address,
@@ -267,8 +330,26 @@ impl TokenContract {
         admin.require_auth();
         Self::assert_admin(&env, &admin)?;
 
-        TokenStorage::set_admin(&env, &new_admin);
-        TokenEvents::admin_transferred(&env, &admin, &new_admin);
+        TokenStorage::set_pending_admin(&env, Some(&new_admin));
+        TokenEvents::admin_transfer_proposed(&env, &admin, &new_admin);
+        Ok(())
+    }
+
+    /// Accept admin privileges. Called by the pending admin.
+    pub fn accept_admin(env: Env, pending_admin: Address) -> Result<(), ContractError> {
+        pending_admin.require_auth();
+
+        let current_pending = TokenStorage::pending_admin(&env)
+            .ok_or(ContractError::NoPendingAdmin)?;
+
+        if pending_admin != current_pending {
+            return Err(ContractError::NotPendingAdmin);
+        }
+
+        let previous_admin = TokenStorage::admin(&env);
+        TokenStorage::set_admin(&env, &pending_admin);
+        TokenStorage::set_pending_admin(&env, None);
+        TokenEvents::admin_transfer_accepted(&env, &previous_admin, &pending_admin);
         Ok(())
     }
 

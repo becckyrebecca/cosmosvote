@@ -41,6 +41,7 @@ fn setup_contracts(env: &Env) -> (GovernanceContractClient<'_>, TokenContractCli
         &0u64,       // proposal_cooldown
         &100u32,     // min_quorum_bps (1%)
         &false,      // restrict_admin_vote
+        &None,       // treasury contract
     );
 
     (gov, token, admin, voter1, voter2, voter3)

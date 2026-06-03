@@ -1,0 +1,17 @@
+{
+  "name": "CosmosVote",
+  "short_name": "CosmosVote",
+  "description": "On-chain governance and voting app for Stellar Soroban",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#4A90E2",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

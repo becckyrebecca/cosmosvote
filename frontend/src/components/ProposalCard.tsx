@@ -12,7 +12,7 @@ const STATE_COLORS: Record<ProposalState, string> = {
 interface Props {
   proposal: Proposal;
   decimals: number;
-  onClick: () => void;
+  onClick: (e?: React.MouseEvent | React.KeyboardEvent) => void;
 }
 
 function formatDate(ts: bigint): string {
@@ -35,7 +35,7 @@ export function ProposalCard({ proposal: p, decimals, onClick }: Props) {
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
-      onClick();
+      onClick(e);
     }
   };
 

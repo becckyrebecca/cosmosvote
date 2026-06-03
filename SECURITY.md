@@ -22,7 +22,7 @@ You will receive an acknowledgment within **48 hours** and a full response withi
 ## Disclosure Policy
 
 - We follow [responsible disclosure](https://en.wikipedia.org/wiki/Responsible_disclosure)
-- We will coordinate a fix and release before public disclosure
+- We will coordinate a fix and release before public disclosure.
 - Credit will be given to reporters in the release notes (unless anonymity is requested)
 - We do not pursue legal action against good-faith security researchers
 
