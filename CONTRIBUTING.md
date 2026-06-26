@@ -126,6 +126,137 @@ To configure these rules via GitHub repository settings:
 - Emit events for every state transition
 - Error codes must be added to `ContractError` with a unique `u32` discriminant
 
+## Code Style & Repository Conventions
+
+### Rust
+
+- Format all Rust code with `rustfmt` before committing (`make fmt`).
+- No Clippy warnings are allowed; fix all warnings before opening a PR (`make lint`).
+- Use `snake_case` for functions and variables, `PascalCase` for types and enums, `SCREAMING_SNAKE_CASE` for constants.
+- Keep functions focused — prefer small, single-responsibility functions.
+- Use `checked_add` / `checked_sub` for arithmetic on any numeric value that can overflow.
+- Return `Result<T, ContractError>` from all fallible contract entry points.
+- Avoid `unwrap()` / `expect()` in contract code; propagate errors with `?`.
+- Document public functions with a `///` doc comment explaining purpose, parameters, and errors.
+
+```rust
+// Good
+/// Returns the current proposal count.
+pub fn proposal_count(env: Env) -> u64 {
+    storage::get_proposal_count(&env)
+}
+
+// Bad — no doc, uses unwrap
+pub fn proposal_count(env: Env) -> u64 {
+    env.storage().instance().get(&InstanceKey::ProposalCount).unwrap()
+}
+```
+
+### TypeScript (Frontend)
+
+- All files must pass ESLint with zero warnings: `npm run lint` from `frontend/`.
+- All files must type-check: `npm run type-check`.
+- Use `camelCase` for variables and functions, `PascalCase` for types, interfaces, and React components.
+- Prefer `interface` over `type` for object shapes; use `type` for unions and aliases.
+- Use explicit return types on exported functions.
+- Avoid `any`; use `unknown` and narrow types explicitly.
+- Use `async/await` over `.then()` chains.
+
+```typescript
+// Good
+export async function fetchProposalCount(): Promise<number> {
+  const count = await simulateCall(config.governanceContractId, 'proposal_count');
+  return Number(count);
+}
+
+// Bad — implicit any, no return type
+export async function fetchProposalCount() {
+  const count: any = await simulateCall(config.governanceContractId, 'proposal_count');
+  return count;
+}
+```
+
+### Shell Scripts
+
+- All scripts must start with `#!/usr/bin/env bash` and `set -euo pipefail`.
+- Quote all variable expansions: `"${VAR}"` not `$VAR`.
+- Use `snake_case` for local variables and function names.
+- Add a brief comment above each logical block explaining what it does.
+- Do not hard-code secrets or keys; read them from environment variables.
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Deploy governance contract to the configured network
+stellar contract deploy \
+  --wasm "${WASM_PATH}" \
+  --source "${STELLAR_SECRET_KEY}" \
+  --network "${NETWORK}"
+```
+
+### Branch Naming
+
+| Type | Pattern | Example |
+|------|---------|---------|
+| Feature | `feat/<short-description>` | `feat/proposal-delegation` |
+| Bug fix | `fix/<short-description>` | `fix/quorum-bypass` |
+| Documentation | `docs/<short-description>` | `docs/api-reference` |
+| Chore / tooling | `chore/<short-description>` | `chore/update-deps` |
+| Release | `release/v<version>` | `release/v1.2.0` |
+
+- Use lowercase letters, numbers, and hyphens only — no underscores or slashes beyond the prefix.
+- Keep names concise (≤ 40 characters after the prefix).
+
+### Commit Messages
+
+Follow [Conventional Commits](https://www.conventionalcommits.org/):
+
+```
+<type>(<optional scope>): <short summary>
+
+<optional body>
+
+<optional footer: Closes #issue>
+```
+
+Allowed types: `feat`, `fix`, `docs`, `test`, `refactor`, `chore`, `perf`, `ci`.
+
+```
+# Good
+feat(governance): add proposal delegation support
+
+Allows token holders to delegate voting power to another address.
+
+Closes #42
+
+# Bad
+updated stuff
+```
+
+- Keep the subject line ≤ 72 characters.
+- Use the imperative mood: "add", "fix", "update" — not "added", "fixed", "updated".
+- Reference the issue number in the footer: `Closes #<number>`.
+
+### Pull Request Expectations
+
+- Target `main` branch.
+- Title follows the same Conventional Commits format as commit messages.
+- Description must include: **What** changed, **Why**, and **How to test**.
+- Link the relevant issue with `Closes #<number>` in the PR description.
+- Keep PRs focused — one issue or feature per PR.
+- Self-review your diff before requesting review.
+- Ensure `make fmt`, `make lint`, and `make test` all pass locally before pushing.
+
+### Lint Rules Summary
+
+| Language | Tool | Command | Config |
+|----------|------|---------|--------|
+| Rust | Clippy | `make lint` | `clippy.toml` / inline `#[allow]` |
+| Rust | rustfmt | `make fmt` | `rustfmt.toml` |
+| TypeScript | ESLint | `npm run lint` (in `frontend/`) | `.eslintrc` |
+| TypeScript | tsc | `npm run type-check` | `tsconfig.json` |
+
 ## Testing Requirements
 
 - Unit tests go in `src/test.rs`
