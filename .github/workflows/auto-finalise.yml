@@ -1,0 +1,30 @@
+name: Auto Finalize Proposals
+
+on:
+  schedule:
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+    inputs:
+      proposal_ids:
+        description: 'Space-separated list of expired proposal IDs to finalise'
+        required: false
+
+jobs:
+  finalise:
+    name: Finalise expired proposals
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install Soroban CLI
+        run: |
+          curl -L https://soroban.stellar.org/install | bash
+          export PATH="$HOME/.soroban/bin:$PATH"
+      - name: Finalise expired proposals
+        env:
+          SOROBAN_RPC_URL: ${{ secrets.SOROBAN_RPC_URL }}
+          GOVERNANCE_CONTRACT_ID: ${{ secrets.GOVERNANCE_CONTRACT_ID }}
+          PROPOSAL_IDS: ${{ github.event.inputs.proposal_ids }}
+        run: |
+          export PATH="$HOME/.soroban/bin:$PATH"
+          chmod +x scripts/finalise-expired-proposals.sh
+          ./scripts/finalise-expired-proposals.sh

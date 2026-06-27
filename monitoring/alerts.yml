@@ -1,0 +1,47 @@
+groups:
+  - name: cosmosvote
+    interval: 60s
+    rules:
+      # RPC latency p95 > 2s for 5 minutes
+      - alert: HighRpcLatency
+        expr: |
+          histogram_quantile(0.95,
+            rate(cosmosvote_rpc_request_duration_ms_bucket[5m])
+          ) > 2000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "RPC p95 latency above 2 s on {{ $labels.network }}"
+          description: "Current value: {{ $value | humanizeDuration }}"
+
+      # RPC error rate > 5% for 5 minutes
+      - alert: HighRpcErrorRate
+        expr: |
+          rate(cosmosvote_rpc_errors_total[5m])
+            / rate(cosmosvote_rpc_requests_total[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "RPC error rate above 5% on {{ $labels.network }}"
+          description: "Current rate: {{ $value | humanizePercentage }}"
+
+      # Event poll lag > 5 minutes
+      - alert: EventPollingLag
+        expr: cosmosvote_event_poll_lag_seconds > 300
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Event polling is lagging on {{ $labels.network }}"
+          description: "Lag: {{ $value | humanizeDuration }}"
+
+      # RPC target down
+      - alert: RpcTargetDown
+        expr: up{job="cosmosvote-rpc"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "CosmosVote RPC target is down on {{ $labels.network }}"

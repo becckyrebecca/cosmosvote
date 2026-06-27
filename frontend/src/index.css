@@ -1,0 +1,73 @@
+/* Light theme (default) */
+:root {
+  --bg-page: #f8fafc;
+  --bg-card: #ffffff;
+  --bg-header: #1e293b;
+  --bg-input: #ffffff;
+  --bg-stat: #ffffff;
+  --bg-detail: #ffffff;
+  --bg-vote-cell: #f9fafb;
+  --bg-vote-info: #f0f9ff;
+  --text-primary: #1e293b;
+  --text-secondary: #555555;
+  --text-muted: #888888;
+  --text-header: #ffffff;
+  --text-header-sub: #94a3b8;
+  --border-color: #e5e7eb;
+  --input-border: #d1d5db;
+  --error-color: #dc2626;
+}
+
+/* Dark theme */
+[data-theme="dark"] {
+  --bg-page: #0f172a;
+  --bg-card: #1e293b;
+  --bg-header: #0f172a;
+  --bg-input: #1e293b;
+  --bg-stat: #1e293b;
+  --bg-detail: #1e293b;
+  --bg-vote-cell: #0f172a;
+  --bg-vote-info: #0c2340;
+  --text-primary: #f1f5f9;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
+  --text-header: #f1f5f9;
+  --text-header-sub: #94a3b8;
+  --border-color: #334155;
+  --input-border: #475569;
+  --error-color: #f87171;
+}
+
+/* Respect system preference when no manual override */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg-page: #0f172a;
+    --bg-card: #1e293b;
+    --bg-header: #0f172a;
+    --bg-input: #1e293b;
+    --bg-stat: #1e293b;
+    --bg-detail: #1e293b;
+    --bg-vote-cell: #0f172a;
+    --bg-vote-info: #0c2340;
+    --text-primary: #f1f5f9;
+    --text-secondary: #cbd5e1;
+    --text-muted: #94a3b8;
+    --text-header: #f1f5f9;
+    --text-header-sub: #94a3b8;
+    --border-color: #334155;
+    --input-border: #475569;
+    --error-color: #f87171;
+  }
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg-page);
+  color: var(--text-primary);
+  font-family: system-ui, sans-serif;
+  transition: background 0.2s, color 0.2s;
+}

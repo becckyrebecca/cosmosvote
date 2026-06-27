@@ -2,7 +2,7 @@
 
 #![cfg(test)]
 
-use soroban_sdk::{testutils::Address as _, Address, Env, String};
+use soroban_sdk::{testutils::{Address as _, Ledger}, Address, Env, String};
 
 use crate::{GovernanceContract, GovernanceContractClient};
 
@@ -31,7 +31,13 @@ pub fn setup<'a>(env: &'a Env) -> TestEnv<'a> {
     // Deploy token
     let token_id = env.register(TokenContract, ());
     let token = TokenContractClient::new(env, &token_id);
-    token.initialize(&admin, &1_000_000_000i128);
+    token.initialize(
+        &admin,
+        &1_000_000_000i128,
+        &soroban_sdk::String::from_str(env, "CosmosVote"),
+        &soroban_sdk::String::from_str(env, "VOTE"),
+        &7u32,
+    );
 
     // Fund voters
     token.mint(&admin, &voter_a, &10_000_000i128);
@@ -41,7 +47,7 @@ pub fn setup<'a>(env: &'a Env) -> TestEnv<'a> {
     // Deploy governance
     let gov_id = env.register(GovernanceContract, ());
     let governance = GovernanceContractClient::new(env, &gov_id);
-    governance.initialize(&admin, &token_id, &0i128, &0u64, &0u32, &false);
+    governance.initialize(&admin, &token_id, &0i128, &0u64, &0u32, &false, &None);
 
     TestEnv { env, governance, token, admin, voter_a, voter_b, voter_c }
 }
@@ -54,6 +60,8 @@ pub fn create_proposal(t: &TestEnv, proposer: &Address) -> u64 {
         &String::from_str(t.env, "A test governance proposal for CosmosVote"),
         &5_000_000i128,
         &604_800u64,
+        &None,
+        &None,
     )
 }
 

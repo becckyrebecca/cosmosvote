@@ -1,0 +1,64 @@
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.skeleton {
+  background: linear-gradient(90deg, var(--color-skeleton-base) 25%, var(--color-skeleton-shine) 50%, var(--color-skeleton-base) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite linear;
+  border-radius: var(--radius-sm);
+}
+
+.card {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  background: var(--color-surface);
+}
+
+.cardHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: var(--space-3);
+}
+
+.titleSkeleton {
+  height: 1.25rem;
+  width: 60%;
+}
+
+.badgeSkeleton {
+  height: 1.25rem;
+  width: 60px;
+}
+
+.descSkeleton {
+  height: 0.875rem;
+  width: 90%;
+  margin-bottom: var(--space-2);
+}
+
+.metaSkeleton {
+  height: 0.75rem;
+  width: 40%;
+  margin-bottom: var(--space-4);
+}
+
+.progressTrack {
+  background: var(--color-skeleton-base);
+  border-radius: var(--radius-sm);
+  height: 6px;
+  margin-bottom: var(--space-2);
+}
+
+.progressSkeleton {
+  height: 100%;
+  width: 30%;
+}
+
+.countsSkeleton {
+  height: 0.7rem;
+  width: 50%;
+}

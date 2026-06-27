@@ -42,6 +42,7 @@ Key rules:
 - A tie (`yes == no`) is always rejected
 - Voting period is immutable after proposal creation
 - Anyone can call `finalise()` after the voting period ends
+- Off-chain keepers or GitHub Actions should periodically call `finalise()` on expired proposals so they do not remain stuck in `Active` state.
 
 ## Example Lifecycle
 

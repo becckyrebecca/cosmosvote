@@ -8,22 +8,31 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "lint": "eslint src --ext .ts,.tsx --report-unused-disable-directives --max-warnings 0",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "bundle-analyze": "vite build --mode analyze",
+    "license-check": "license-checker --onlyAllow 'MIT;Apache-2.0;BSD-2-Clause;BSD-3-Clause;ISC;CC0-1.0;Unlicense;0BSD;Python-2.0' --excludePrivatePackages"
   },
   "dependencies": {
+    "@stellar/freighter-api": "^6.0.1",
     "@stellar/stellar-sdk": "12.3.0",
-    "react": "18.3.1",
-    "react-dom": "18.3.1"
+    "react": "19.2.7",
+    "react-dom": "19.2.7"
   },
   "devDependencies": {
-    "@types/react": "18.3.3",
-    "@types/react-dom": "18.3.0",
-    "@typescript-eslint/eslint-plugin": "7.13.0",
-    "@typescript-eslint/parser": "7.13.0",
-    "@vitejs/plugin-react": "4.3.1",
-    "eslint": "8.57.0",
-    "eslint-plugin-react-hooks": "4.6.2",
-    "typescript": "5.4.5",
-    "vite": "5.3.1"
+    "@testing-library/jest-dom": "6.4.6",
+    "@testing-library/react": "16.3.2",
+    "@testing-library/user-event": "14.5.2",
+    "@types/react": "19.2.17",
+    "@types/react-dom": "19.2.3",
+    "@typescript-eslint/eslint-plugin": "8.61.0",
+    "@typescript-eslint/parser": "8.61.0",
+    "@vitejs/plugin-react": "6.0.2",
+    "@vitest/coverage-v8": "4.1.8",
+    "eslint": "10.4.1",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "license-checker": "25.0.1",
+    "typescript": "6.0.3",
+    "vite": "5.3.1",
+    "vitest": "4.1.8"
   }
 }

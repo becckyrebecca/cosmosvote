@@ -1,0 +1,182 @@
+{
+  "__inputs": [
+    {
+      "name": "DS_PROMETHEUS",
+      "label": "Prometheus",
+      "description": "Prometheus data source",
+      "type": "datasource",
+      "pluginId": "prometheus",
+      "pluginName": "Prometheus"
+    }
+  ],
+  "__requires": [
+    { "type": "grafana", "id": "grafana", "name": "Grafana", "version": "10.0.0" },
+    { "type": "datasource", "id": "prometheus", "name": "Prometheus", "version": "1.0.0" },
+    { "type": "panel", "id": "timeseries", "name": "Time series", "version": "" },
+    { "type": "panel", "id": "stat", "name": "Stat", "version": "" },
+    { "type": "panel", "id": "gauge", "name": "Gauge", "version": "" }
+  ],
+  "title": "CosmosVote Service Metrics",
+  "uid": "cosmosvote-overview",
+  "tags": ["cosmosvote", "governance", "stellar"],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "network",
+        "type": "custom",
+        "label": "Network",
+        "options": [
+          { "text": "testnet", "value": "testnet" },
+          { "text": "mainnet", "value": "mainnet" }
+        ],
+        "current": { "text": "testnet", "value": "testnet" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "RPC Latency (p50 / p95 / p99)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": { "unit": "ms", "thresholds": { "steps": [
+          { "color": "green", "value": null },
+          { "color": "yellow", "value": 500 },
+          { "color": "red", "value": 2000 }
+        ]}}
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, rate(cosmosvote_rpc_request_duration_ms_bucket{network=\"$network\"}[5m]))",
+          "legendFormat": "p50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, rate(cosmosvote_rpc_request_duration_ms_bucket{network=\"$network\"}[5m]))",
+          "legendFormat": "p95"
+        },
+        {
+          "expr": "histogram_quantile(0.99, rate(cosmosvote_rpc_request_duration_ms_bucket{network=\"$network\"}[5m]))",
+          "legendFormat": "p99"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Event Polling Rate (events/min)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "targets": [
+        {
+          "expr": "rate(cosmosvote_events_polled_total{network=\"$network\"}[1m]) * 60",
+          "legendFormat": "events/min"
+        },
+        {
+          "expr": "rate(cosmosvote_events_processed_total{network=\"$network\"}[1m]) * 60",
+          "legendFormat": "processed/min"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Error Rate",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": { "defaults": { "unit": "percentunit" } },
+      "targets": [
+        {
+          "expr": "rate(cosmosvote_rpc_errors_total{network=\"$network\"}[5m]) / rate(cosmosvote_rpc_requests_total{network=\"$network\"}[5m])",
+          "legendFormat": "RPC error rate"
+        },
+        {
+          "expr": "rate(cosmosvote_event_poll_errors_total{network=\"$network\"}[5m]) / rate(cosmosvote_event_poll_attempts_total{network=\"$network\"}[5m])",
+          "legendFormat": "Poll error rate"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Active Proposals",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "thresholds" } } },
+      "targets": [
+        {
+          "expr": "cosmosvote_proposals_active{network=\"$network\"}",
+          "legendFormat": "Active"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Total Votes Cast",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "targets": [
+        {
+          "expr": "cosmosvote_votes_cast_total{network=\"$network\"}",
+          "legendFormat": "Votes"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "RPC Uptime",
+      "type": "gauge",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 12 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0, "max": 1,
+          "thresholds": { "steps": [
+            { "color": "red", "value": null },
+            { "color": "yellow", "value": 0.95 },
+            { "color": "green", "value": 0.99 }
+          ]}
+        }
+      },
+      "targets": [
+        {
+          "expr": "avg_over_time(up{job=\"cosmosvote-rpc\",network=\"$network\"}[24h])",
+          "legendFormat": "24h uptime"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Event Polling Lag (seconds behind)",
+      "type": "gauge",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 12 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": { "steps": [
+            { "color": "green", "value": null },
+            { "color": "yellow", "value": 60 },
+            { "color": "red", "value": 300 }
+          ]}
+        }
+      },
+      "targets": [
+        {
+          "expr": "cosmosvote_event_poll_lag_seconds{network=\"$network\"}",
+          "legendFormat": "lag"
+        }
+      ]
+    }
+  ]
+}

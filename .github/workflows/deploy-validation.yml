@@ -1,0 +1,50 @@
+name: Deploy Script Validation
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "scripts/deploy_testnet.sh"
+      - "scripts/deploy_mainnet.sh"
+      - ".github/workflows/deploy-validation.yml"
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "scripts/deploy_testnet.sh"
+      - "scripts/deploy_mainnet.sh"
+      - ".github/workflows/deploy-validation.yml"
+
+jobs:
+  shellcheck:
+    name: ShellCheck syntax
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install shellcheck
+        run: sudo apt-get install -y shellcheck
+      - name: Lint deploy_testnet.sh
+        run: shellcheck -S warning scripts/deploy_testnet.sh
+      - name: Lint deploy_mainnet.sh
+        run: shellcheck -S warning scripts/deploy_mainnet.sh
+
+  dry-run-testnet:
+    name: Dry-run deploy_testnet.sh
+    runs-on: ubuntu-latest
+    needs: shellcheck
+    env:
+      # Stub values — no real network calls in DRY_RUN=1 mode
+      STELLAR_SECRET_KEY: SCZANGBA5RLMPI7AZ3CKWNUK47UFBIZFFNMF4KCLCNB63JPUCLCXBGC
+      DRY_RUN: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate script inputs (dry run)
+        run: bash scripts/deploy_testnet.sh
+
+  dry-run-mainnet:
+    name: Dry-run deploy_mainnet.sh (syntax only)
+    runs-on: ubuntu-latest
+    needs: shellcheck
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bash syntax check
+        run: bash -n scripts/deploy_mainnet.sh

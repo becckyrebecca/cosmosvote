@@ -12,7 +12,7 @@ transfer_admin(admin, new_admin)  // Immediately changes admin
 ```
 
 This approach is risky in production because:
-- A typo in the `new_admin` address permanently loses admin privileges
+- A typo in the `new_admin` address permanently loses admin privileges.
 - No time for verification before the transfer completes
 - Incompatible with multisig contract requirements
 

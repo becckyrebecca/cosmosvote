@@ -8,8 +8,9 @@
 **Residual Risk:** None
 
 ### T2 — Malicious Proposer
-**Goal:** Create proposals that pass without genuine support.  
+**Goal:** Create proposals that pass without genuine support, or spam the system with low-quality proposals.  
 **Mitigations:** Quorum enforcement, `min_proposal_balance`, `proposal_cooldown`, admin cancel.  
+**Production Recommendation:** Always set `min_proposal_balance` to a non-zero value in production (e.g., 1% of total supply) to prevent sybil spam.  
 **Residual Risk:** Low
 
 ### T3 — Malicious Admin
@@ -27,6 +28,22 @@
 **Mitigations:** Admin must deploy a trustworthy token; token address is immutable after init.  
 **Residual Risk:** High (external dependency — accepted)
 
+### Reentrancy and Cross-Contract Calls
+**Goal:** Prevent malicious token callbacks from manipulating governance tallies during vote casting or finalization.  
+**Mitigations:** Soroban executes contract calls in a single deterministic transaction frame and enforces call stack isolation. Cross-contract callbacks during `cast_vote` are executed without allowing unsafe reentrant state mutations in the governance contract.  
+**Residual Risk:** Low (verified by regression tests that deploy a malicious token contract and attempt to re-enter `cast_vote` through `balance_at`).
+
+## RPC CORS Requirements
+The frontend connects directly to a Soroban RPC endpoint. A browser-accessible RPC must expose a narrow CORS policy to avoid breaking the app while also preventing broad abuse.
+
+Required headers for the RPC endpoint:
+- `Access-Control-Allow-Origin: <frontend origin>` (do not use `*` for production)
+- `Access-Control-Allow-Methods: POST, OPTIONS`
+- `Access-Control-Allow-Headers: Content-Type`
+- `Access-Control-Allow-Credentials: false`
+
+For local Docker development, the repository uses a proxy service so the frontend can access the RPC at `http://localhost:8000` with explicit CORS headers while the underlying Soroban node remains isolated.
+
 ## Security Properties
 
 | Property | Implementation |
@@ -37,3 +54,4 @@
 | Arithmetic safety | `checked_add` on all vote accumulation |
 | Finalization correctness | Pass condition evaluated atomically |
 | Emergency response | Admin pause blocks all state-changing ops |
+.

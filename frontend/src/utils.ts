@@ -1,3 +1,7 @@
+export function maskAddress(addr: string): string {
+  return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+}
+
 export function formatTokenAmount(amount: bigint, decimals: number): string {
   const str = String(amount);
   if (decimals === 0) return str.replace(/\B(?=(\d{3})+(?!\d))/g, ',');

@@ -1,0 +1,3 @@
+cosmosvote_governance.wasm: 85000
+cosmosvote_token.wasm: 65000
+cosmosvote_treasury.wasm: 40000

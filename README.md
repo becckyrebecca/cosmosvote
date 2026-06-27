@@ -14,7 +14,7 @@ CosmosVote enables DAOs, protocols, and communities to create proposals, cast to
 ## Table of Contents
 
 - [Project Overview](#project-overview)
-- [Architecture](#architecture)
+- [Architecture.](#architecture)
 - [Features](#features)
 - [Quick Start](#quick-start)
 - [Project Structure](#project-structure)
@@ -71,7 +71,32 @@ Decentralized governance is critical for DAOs, protocols, and communities to mak
 │                    └────────────┘                           │
 └─────────────────────────────────────────────────────────────┘
 ```
+### Frontend ↔ Contract Interaction
 
+The user flow between the frontend, wallet, Soroban RPC, and smart contracts is documented below. This flow is also available as a dedicated Mermaid diagram in [docs/frontend-contract-flow.md](docs/frontend-contract-flow.md).
+
+```mermaid
+sequenceDiagram
+  participant User
+  participant Frontend
+  participant Wallet
+  participant SorobanRPC
+  participant Contract
+
+  User->>Frontend: open app
+  Frontend->>Wallet: request wallet connect
+  Wallet-->>Frontend: wallet connected / account authorized
+  Frontend->>SorobanRPC: fetch proposals
+  SorobanRPC-->>Frontend: proposals list
+  User->>Frontend: select proposal and cast vote
+  Frontend->>Wallet: request transaction signature
+  Wallet-->>Frontend: signed transaction
+  Frontend->>SorobanRPC: submit transaction
+  SorobanRPC->>Contract: invoke voting contract
+  Contract-->>SorobanRPC: transaction result
+  SorobanRPC-->>Frontend: confirmation
+  Frontend->>User: display confirmation
+```
 ### Key Design Decisions
 
 | Decision | Approach |
@@ -82,6 +107,7 @@ Decentralized governance is critical for DAOs, protocols, and communities to mak
 | Storage tiers | Instance for config, Persistent for proposals/votes, Temporary for allowances |
 | Events | Every state transition emits an on-chain event |
 | Tie handling | Tie (yes == no) results in rejection |
+| Admin vote restriction | When `restrict_admin_vote=true`, admin cannot vote on **any** proposal |
 
 ---
 
@@ -91,6 +117,7 @@ Decentralized governance is critical for DAOs, protocols, and communities to mak
 - **Token-weighted voting** — vote weight equals the voter's governance token balance
 - **Yes / No / Abstain** — three-way vote with quorum and majority enforcement
 - **Double-vote prevention** — each address can vote exactly once per proposal
+- **Vote delegation** — token holders can delegate voting power to a representative without transferring tokens
 - **Lifecycle management** — Active → Passed/Rejected → Executed, or Cancelled by admin
 - **On-chain events** — every action emits a verifiable event for off-chain indexers
 - **Admin controls** — pause/unpause, update quorum, transfer admin privileges
@@ -103,28 +130,90 @@ Decentralized governance is critical for DAOs, protocols, and communities to mak
 
 ### Prerequisites
 
-- Rust 1.75+ with `wasm32-unknown-unknown` target
+- Rust 1.75+ with `wasm32-unknown-unknown` target.
 - Stellar CLI (optional, for deployment)
-- Docker & Docker Compose (optional)
+- Docker & Docker Compose (optional).
 
-### Installation & Testing
+### Supported Versions
+
+| Component | Supported versions | Notes |
+|-----------|-------------------|-------|
+| Rust | 1.75 (MSRV), stable, beta | Tested via CI matrix |
+| Node.js | 20 (LTS), 22 (current LTS) | For frontend build |
+
+Matrix build status is tracked in the [Matrix Tests workflow](.github/workflows/matrix.yml).
+
+### 1. Clone & Configure
 
 ```bash
-# Clone the repository
 git clone https://github.com/PrincessnJoy/cosmosvote.git
 cd cosmosvote
 
-# Add WASM target
+# Copy and edit root config
+cp .env.example .env
+# Set NETWORK, STELLAR_SECRET_KEY, GOVERNANCE_CONTRACT_ID, TOKEN_CONTRACT_ID
+```
+
+### 2. Contracts
+
+```bash
+# Add WASM compilation target
 rustup target add wasm32-unknown-unknown
 
-# Run tests
+# Run all tests
 make test
 
 # Build WASM binaries
 make build
 
-# View documentation
+# (Optional) View generated docs
 cargo doc --no-deps --open
+```
+
+### 3. Frontend
+
+```bash
+cd frontend
+
+# Install dependencies
+npm install
+
+# Copy and edit frontend config
+cp .env.example .env
+# Set VITE_GOVERNANCE_CONTRACT_ID, VITE_TOKEN_CONTRACT_ID, VITE_NETWORK
+
+# Start development server (http://localhost:5173)
+npm run dev
+
+# Build for production
+npm run build
+npm run preview
+```
+
+### 4. Notification Service
+
+> **Note:** A dedicated notification service is planned. In the meantime, operators can receive on-chain event notifications via webhooks using the Stellar Horizon event stream.
+
+```bash
+# Subscribe to contract events via Stellar CLI
+stellar events --network testnet \
+  --contract-id $GOVERNANCE_CONTRACT_ID \
+  --start-ledger <DEPLOY_LEDGER>
+```
+
+For automated alerts, configure a webhook listener against the Horizon `/accounts/{id}/payments` or Soroban event endpoint and forward events to Slack, Discord, or email.
+
+### 5. Local Development with Docker
+
+```bash
+# Start all services (local Stellar node + dev container)
+docker compose up
+
+# Run tests inside the container
+docker compose run --rm dev make test
+
+# Build inside the container
+docker compose run --rm dev make build
 ```
 
 ---
@@ -162,7 +251,8 @@ cosmosvote/
 │   ├── lifecycle.md
 │   ├── storage.md
 │   ├── errors.md
-│   └── faq.md
+│   ├── faq.md
+│   └── runbook.md
 │
 ├── scripts/
 │   ├── deploy.sh                     # Deploy to local/testnet
@@ -173,6 +263,17 @@ cosmosvote/
 │   ├── local.toml
 │   ├── testnet.toml
 │   └── mainnet.toml
+│
+├── notification-service/             # Off-chain notification service
+│   ├── src/
+│   │   ├── index.ts                  # CLI entry point
+│   │   ├── watcher.ts                # Horizon event poller
+│   │   ├── notifier.ts               # Email & webhook dispatch
+│   │   ├── subscriptions.ts          # Subscription management
+│   │   └── types.ts                  # Shared types
+│   ├── .env.example
+│   ├── package.json
+│   └── tsconfig.json
 │
 ├── frontend/                         # React + Vite proposal browser
 ├── Cargo.toml                        # Workspace manifest
@@ -200,6 +301,7 @@ pub fn initialize(
     voting_token: Address,
     min_proposal_balance: i128,
     proposal_cooldown: u64,
+    min_quorum_bps: u32,
     restrict_admin_vote: bool,
 ) -> Result<(), ContractError>
 ```
@@ -214,6 +316,7 @@ pub fn create_proposal(
     description: String,  // 1–1024 chars
     quorum: i128,         // > 0, <= total supply
     duration: u64,        // 60–2,592,000 seconds
+    payload: Option<ExecutionPayload>, // Optional on-chain action
 ) -> Result<u64, ContractError>
 ```
 
@@ -236,11 +339,27 @@ pub fn finalise(env: Env, proposal_id: u64) -> Result<(), ContractError>
 
 Pass conditions: `total_votes >= quorum AND votes_yes > votes_no`
 
+The `finalise()` function is permissionless and is intended to be called by an off-chain keeper or bot after the voting period ends. This ensures proposals do not stay stuck in `Active` state even if no single voter submits the finalization transaction.
+
 ### Execute / Cancel
 
 ```rust
 pub fn execute(env: Env, admin: Address, proposal_id: u64) -> Result<(), ContractError>
-pub fn cancel(env: Env, admin: Address, proposal_id: u64) -> Result<(), ContractError>
+pub fn cancel(env: Env, admin: Address, proposal_id: u64, reason: Option<String>) -> Result<(), ContractError>
+```
+
+### Admin Operations
+
+```rust
+// Update the governance token address (only if no active proposals)
+pub fn update_voting_token(env: Env, admin: Address, new_token: Address) -> Result<(), ContractError>
+
+// Update quorum for an active proposal
+pub fn update_quorum(env: Env, admin: Address, proposal_id: u64, new_quorum: i128) -> Result<(), ContractError>
+
+// Two-step admin transfer
+pub fn transfer_admin(env: Env, admin: Address, new_admin: Address) -> Result<(), ContractError>
+pub fn accept_admin(env: Env, pending_admin: Address) -> Result<(), ContractError>
 ```
 
 ---
@@ -250,6 +369,10 @@ pub fn cancel(env: Env, admin: Address, proposal_id: u64) -> Result<(), Contract
 ### SEP-41 Compliance
 
 The CosmosVote token contract implements the **Stellar Enhancement Proposal 41 (SEP-41)** standard for token contracts on Soroban. This ensures wallet and explorer compatibility for token discovery, display, and transfer operations.
+
+### Theoretical Maximum Supply
+
+The token contract stores all balances and the total supply as `i128`. The maximum representable value is `i128::MAX = 170_141_183_460_469_231_731_687_303_715_884_105_727`. Mint operations use `checked_add` to enforce this bound — any mint that would exceed `i128::MAX` returns `ArithmeticOverflow`. In practice, governance vote tallies are bounded by total supply, making arithmetic overflow in `cast_vote` impossible for any valid token supply.
 
 ### Initialization
 
@@ -292,6 +415,17 @@ pub fn total_supply(env: Env) -> i128        // Total supply
 pub fn balance(env: Env, owner: Address) -> i128  // Account balance
 ```
 
+### Delegation
+
+```rust
+pub fn delegate(env: Env, owner: Address, delegate_to: Address) -> Result<(), ContractError>
+pub fn undelegate(env: Env, owner: Address) -> Result<(), ContractError>
+pub fn get_delegation(env: Env, owner: Address) -> Option<Address>
+pub fn get_delegated_weight(env: Env, voter: Address, delegators: Vec<Address>) -> i128
+```
+
+See [docs/delegation.md](./docs/delegation.md) for the full delegation model and behavior.
+
 ---
 
 ## Proposal Lifecycle
@@ -331,6 +465,7 @@ pub fn balance(env: Env, owner: Address) -> i128  // Account balance
 | `Admin` | `Address` | Admin address |
 | `VotingToken` | `Address` | Governance token address |
 | `ProposalCount` | `u64` | Monotonic proposal ID counter |
+| `ActiveProposalCount` | `u64` | Current number of non-terminal proposals |
 | `MinProposalBalance` | `i128` | Minimum balance to propose |
 | `ProposalCooldown` | `u64` | Seconds between proposals |
 | `RestrictAdminVote` | `bool` | Admin vote restriction flag |
@@ -356,16 +491,72 @@ cp .env.example .env
 
 Key variables: `NETWORK`, `STELLAR_RPC_URL`, `STELLAR_SECRET_KEY`, `GOVERNANCE_CONTRACT_ID`, `TOKEN_CONTRACT_ID`.
 
+### `restrict_admin_vote` flag
+
+The `restrict_admin_vote` parameter passed to `initialize` controls a narrow voting restriction on the admin:
+
+- **`false` (default):** The admin can vote on any proposal, including ones they created.
+- **`true`:** The admin is blocked from voting **only on proposals that the admin themselves created**. The admin can still vote freely on proposals created by other addresses.
+
+This is intentionally scoped — it prevents a conflict of interest when the admin is also the proposer, without removing the admin's ability to participate in governance generally.
+
+> **Note:** This behavior is tracked in issue #14, which documents the ambiguity in the original specification. The current implementation blocks admin voting only when `voter == admin && proposal.proposer == admin`.
+
+**Example:**
+
+```rust
+// Admin creates a proposal — admin CANNOT vote on it when restrict_admin_vote = true
+gov.initialize(&admin, &token_id, &0, &0, &0, &true);
+let id = gov.create_proposal(&admin, ...);
+gov.cast_vote(&admin, &id, &Vote::Yes); // → Err(AdminVoteRestricted)
+
+// Admin votes on a proposal created by someone else — this is ALLOWED
+let id2 = gov.create_proposal(&other_user, ...);
+gov.cast_vote(&admin, &id2, &Vote::Yes); // → Ok(())
+```
+
 ---
 
 ## Development
 
 ### With Docker
 
+The Dockerfile uses a **multi-stage build** to keep the final image small and free of build tooling:
+
+| Stage | Base image | Purpose |
+|-------|-----------|---------|
+| `builder` | `rust:1.75-slim-bookworm` (pinned to digest) | Compiles WASM binaries |
+| `runtime` | `debian:bookworm-slim` (pinned to digest) | Ships only `*.wasm` artifacts + Stellar CLI |
+
+Both base images are pinned to a specific digest for reproducible builds.
+
+**Build the runtime image** (WASM artifacts only):
+
 ```bash
+docker build --target runtime -t cosmosvote:latest .
+```
+
+**Build only the builder stage** (useful for running tests in CI):
+
+```bash
+docker build --target builder -t cosmosvote:builder .
+docker run --rm cosmosvote:builder make test
+```
+
+**Run the dev environment** via Docker Compose:
+
+```bash
+# Start a dev shell (builder stage — full Rust toolchain)
 docker compose up
 docker compose run --rm dev make test
 docker compose run --rm dev make build
+
+# Build the minimal runtime image (WASM artifacts only)
+docker compose --profile artifacts build artifacts
+
+# Or build directly with Docker
+docker build --target builder -t cosmosvote:builder .   # dev / CI
+docker build --target runtime -t cosmosvote:runtime .   # production artifact image
 ```
 
 ### Without Docker
@@ -393,10 +584,28 @@ make lint
 ## Testing
 
 ```bash
-make test                          # All tests
-cargo test -p cosmosvote-governance  # Governance only
-cargo test -p cosmosvote-token       # Token only
+make test                          # All unit and integration tests
+make test-verbose                  # Tests with output
+cargo test -p cosmosvote-governance  # Governance contract only
+cargo test -p cosmosvote-token       # Token contract only
+cargo test --test integration_tests  # Integration tests only
 cargo test prop_                   # Property-based tests
+```
+
+### Integration Tests
+
+End-to-end integration tests verify the full proposal lifecycle with real contract interactions between the governance and token contracts. Tests cover:
+
+- **Full pass lifecycle**: Proposal creation → voting → finalization → execution
+- **Full reject lifecycle**: Proposals that fail to meet quorum or vote threshold
+- **Cancel lifecycle**: Admin-cancelled proposals
+- **Voting power**: Verification that voting power correctly reflects token balances
+- **Quorum enforcement**: Proposals are rejected if quorum is not met
+
+Run integration tests with:
+
+```bash
+make test-integration
 ```
 
 ---
@@ -404,6 +613,12 @@ cargo test prop_                   # Property-based tests
 ## Security
 
 See [SECURITY.md](./SECURITY.md) for the vulnerability disclosure policy and [docs/security/](./docs/security/) for the full threat model.
+
+### Pause Mechanism
+
+The contract includes a pause mechanism for emergency response. When the contract is **paused**:
+- **Blocked:** `create_proposal`, `cast_vote`, `finalise`.
+- **Allowed:** `execute`, `cancel`, `unpause`, `transfer_admin`, `accept_admin`, `update_quorum`.
 
 Key security properties:
 - `require_auth()` on all state-changing operations
@@ -430,6 +645,8 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md). Quick checklist:
 - [SEP-41 Token Standard](https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0041.md)
 - [Architecture Decision Records](./docs/adr/)
 - [Security Documentation](./docs/security/)
+- [Notification Service](./docs/notification-service.md)
+- [Gas Budgeting Guide](./docs/gas-budgeting.md)
 
 ---
 

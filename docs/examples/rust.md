@@ -76,8 +76,11 @@ GovernanceContract::update_quorum(env, admin.clone(), proposal_id, 3_000_000)?;
 // Transfer admin
 GovernanceContract::transfer_admin(env, admin.clone(), new_admin.clone())?;
 
-// Cancel active proposal
-GovernanceContract::cancel(env, admin.clone(), proposal_id)?;
+// Cancel active proposal with reason
+GovernanceContract::cancel(env, admin.clone(), proposal_id, Some(String::from_str(env, "Bug is not relevant")))?;
+
+// Cancel active proposal without a reason
+GovernanceContract::cancel(env, admin.clone(), proposal_id, None)?;
 ```
 
 ## Token Operations
@@ -86,8 +89,9 @@ GovernanceContract::cancel(env, admin.clone(), proposal_id)?;
 // Transfer tokens
 TokenContract::transfer(env, from.clone(), to.clone(), 1_000_000)?;
 
-// Approve allowance
-TokenContract::approve(env, owner.clone(), spender.clone(), 5_000_000)?;
+// Approve allowance with expiry ledger
+let expiry_ledger = env.ledger().sequence() + 10;
+TokenContract::approve(env, owner.clone(), spender.clone(), 5_000_000, expiry_ledger)?;
 
 // Transfer from allowance
 TokenContract::transfer_from(env, spender.clone(), owner.clone(), recipient.clone(), 2_000_000)?;

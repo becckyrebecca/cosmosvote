@@ -10,10 +10,10 @@ repository = "https://github.com/PrincessnJoy/cosmosvote"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-soroban-sdk = { version = "22.0.0" }
+soroban-sdk = { version = "26.1.0" }
 
 [dev-dependencies]
-soroban-sdk = { version = "22.0.0", features = ["testutils"] }
+soroban-sdk = { version = "26.1.0", features = ["testutils"] }
 
 [features]
 testutils = ["soroban-sdk/testutils"]

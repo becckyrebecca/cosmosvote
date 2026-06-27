@@ -1,0 +1,46 @@
+name: Mutation Testing
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - 'contracts/governance/src/lib.rs'
+      - 'contracts/governance/src/test.rs'
+
+jobs:
+  mutants:
+    name: cargo-mutants (governance)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.78.0"
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cargo-mutants
+        run: cargo install cargo-mutants --locked
+      - name: Run mutation testing
+        run: |
+          cargo mutants \
+            --package cosmosvote-governance \
+            --features testutils \
+            --output mutants-out \
+            -- --features testutils
+      - name: Show surviving mutants
+        if: always()
+        run: |
+          if [ -f mutants-out/missed.txt ]; then
+            echo "=== Surviving mutants (missed) ==="
+            cat mutants-out/missed.txt
+          else
+            echo "No surviving mutants."
+          fi
+      - name: Upload mutants report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: mutants-report
+          path: mutants-out/
+          retention-days: 14

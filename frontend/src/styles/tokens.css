@@ -1,0 +1,63 @@
+/* Design tokens — single source of truth for colors, spacing, typography */
+:root {
+  /* Colors */
+  --color-bg: #f8fafc;
+  --color-surface: #ffffff;
+  --color-border: #e5e7eb;
+  --color-border-input: #d1d5db;
+  --color-text-primary: #1e293b;
+  --color-text-secondary: #555555;
+  --color-text-muted: #888888;
+  --color-text-light: #94a3b8;
+
+  --color-blue: #2563eb;
+  --color-blue-btn: #3b82f6;
+  --color-blue-light: #38bdf8;
+  --color-blue-info-bg: #f0f9ff;
+  --color-green: #16a34a;
+  --color-red: #dc2626;
+  --color-purple: #7c3aed;
+  --color-gray: #6b7280;
+
+  --color-header-bg: #1e293b;
+  --color-header-text: #ffffff;
+
+  --color-skeleton-base: #f3f4f6;
+  --color-skeleton-shine: #e5e7eb;
+
+  /* State colors */
+  --color-state-active: #2563eb;
+  --color-state-passed: #16a34a;
+  --color-state-rejected: #dc2626;
+  --color-state-executed: #7c3aed;
+  --color-state-cancelled: #6b7280;
+
+  /* Spacing */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+
+  /* Typography */
+  --font-family: system-ui, sans-serif;
+  --font-size-xs: 0.7rem;
+  --font-size-sm: 0.75rem;
+  --font-size-base: 0.875rem;
+  --font-size-md: 1rem;
+  --font-size-lg: 1.25rem;
+  --font-size-xl: 1.5rem;
+  --font-weight-medium: 500;
+  --font-weight-bold: 700;
+
+  /* Borders */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+
+  /* Transitions */
+  --transition-fast: 0.15s;
+}

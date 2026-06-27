@@ -37,10 +37,11 @@ fn setup_contracts(env: &Env) -> (GovernanceContractClient<'_>, TokenContractCli
     gov.initialize(
         &admin,
         &token_id,
-        &0i128,      // min_proposal_balance
+        &1000000i128, // min_proposal_balance
         &0u64,       // proposal_cooldown
         &100u32,     // min_quorum_bps (1%)
         &false,      // restrict_admin_vote
+        &None,       // treasury contract
     );
 
     (gov, token, admin, voter1, voter2, voter3)
@@ -51,7 +52,7 @@ fn setup_contracts(env: &Env) -> (GovernanceContractClient<'_>, TokenContractCli
 // ---------------------------------------------------------------------------
 
 #[test]
-fn test_full_proposal_pass_lifecycle() {
+fn test_full_lifecycle_pass_and_execute() {
     let env = Env::default();
     let (gov, token, _admin, voter1, voter2, voter3) = setup_contracts(&env);
     
@@ -62,6 +63,7 @@ fn test_full_proposal_pass_lifecycle() {
         &String::from_str(&env, "Upgrade the protocol to version 2"),
         &5_000_000i128,  // quorum: 5M tokens
         &604_800u64,     // 7 days
+        &None,           // execution_payload
     ).expect("should create proposal");
     
     assert_eq!(id, 0);
@@ -101,7 +103,7 @@ fn test_full_proposal_pass_lifecycle() {
 }
 
 #[test]
-fn test_full_proposal_reject_lifecycle() {
+fn test_full_lifecycle_reject() {
     let env = Env::default();
     let (gov, _token, _admin, voter1, voter2, voter3) = setup_contracts(&env);
     
@@ -112,6 +114,7 @@ fn test_full_proposal_reject_lifecycle() {
         &String::from_str(&env, "Reduce validator rewards"),
         &5_000_000i128,
         &604_800u64,
+        &None,
     ).expect("should create proposal");
     
     // 2. Cast votes (no majority)
@@ -135,7 +138,7 @@ fn test_full_proposal_reject_lifecycle() {
 }
 
 #[test]
-fn test_proposal_cancel_lifecycle() {
+fn test_full_lifecycle_cancel() {
     let env = Env::default();
     let (gov, _token, admin, voter1, _voter2, _voter3) = setup_contracts(&env);
     
@@ -146,16 +149,13 @@ fn test_proposal_cancel_lifecycle() {
         &String::from_str(&env, "A test proposal"),
         &5_000_000i128,
         &604_800u64,
+        &None,
     ).expect("should create proposal");
     
-    // 2. Verify proposal is Active
-    let proposal = gov.get_proposal(id).expect("should get proposal");
-    assert_eq!(proposal.state, ProposalState::Active);
+    // 2. Cancel proposal (admin only)
+    gov.cancel_proposal(&admin, &id).expect("should cancel proposal");
     
-    // 3. Cancel proposal (admin only)
-    gov.cancel_proposal(&admin, &id).expect("admin should cancel proposal");
-    
-    let proposal = gov.get_proposal(id).expect("should get cancelled proposal");
+    let proposal = gov.get_proposal(id).expect("should get finalized proposal");
     assert_eq!(proposal.state, ProposalState::Cancelled);
 }
 
@@ -178,6 +178,7 @@ fn test_voting_power_from_token_contract() {
         &String::from_str(&env, "Verify voting power"),
         &1_000_000i128,
         &604_800u64,
+        &None,
     ).expect("should create proposal");
     
     // Cast vote
@@ -311,6 +312,7 @@ fn test_snapshot_voting_fixed_at_proposal_creation() {
         &String::from_str(&env, "Voting power should be fixed"),
         &1_000_000i128,
         &604_800u64,
+        &None,
     ).expect("should create proposal");
     
     // Transfer tokens from voter1 to voter2

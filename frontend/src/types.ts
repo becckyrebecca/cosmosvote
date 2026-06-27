@@ -8,6 +8,7 @@ export interface Proposal {
   proposer: string;
   title: string;
   description: string;
+  cancellation_reason?: string | null;
   votes_yes: bigint;
   votes_no: bigint;
   votes_abstain: bigint;

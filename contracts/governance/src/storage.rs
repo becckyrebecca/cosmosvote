@@ -2,10 +2,32 @@
 //!
 //! * Instance storage  — contract-wide config (cheap, loaded once per call)
 //! * Persistent storage — per-proposal / per-voter data (survives ledger expiry)
+//!
+//! ## Storage TTL assumptions
+//!
+//! Soroban persistent storage entries expire after their TTL (time-to-live) elapses
+//! without a bump. We extend the TTL on every write to keep proposal and vote data
+//! alive for the full expected proposal lifecycle plus a safety buffer:
+//!
+//! * `PROPOSAL_TTL_LEDGERS` — ~30 days at 5 s/ledger = 518 400 ledgers.
+//!   Covers the maximum voting duration (2 592 000 s) plus buffer.
+//! * `VOTE_TTL_LEDGERS` — same window; vote records must outlive their proposal.
+//! * `COOLDOWN_TTL_LEDGERS` — ~7 days; only needs to cover the cooldown period.
 
 use soroban_sdk::{Address, Env};
 
 use crate::types::{ContractState, Proposal, ProposalState, VoteRecord};
+
+// ---------------------------------------------------------------------------
+// TTL constants (in ledgers, assuming ~5 s/ledger)
+// ---------------------------------------------------------------------------
+
+/// ~30 days. Covers max voting duration (2 592 000 s) with buffer.
+const PROPOSAL_TTL_LEDGERS: u32 = 518_400;
+/// Same as proposal TTL — vote records must outlive the proposal.
+const VOTE_TTL_LEDGERS: u32 = 518_400;
+/// ~7 days — sufficient to cover any cooldown period.
+const COOLDOWN_TTL_LEDGERS: u32 = 120_960;
 
 // ---------------------------------------------------------------------------
 // Storage keys
@@ -17,7 +39,9 @@ pub enum InstanceKey {
     Admin,
     PendingAdmin,
     VotingToken,
+    TreasuryContract,
     ProposalCount,
+    ActiveProposalCount,
     MinProposalBalance,
     ProposalCooldown,
     MinQuorumBps,
@@ -33,7 +57,10 @@ pub enum PersistentKey {
     Proposal(u64),
     HasVoted(u64, Address),
     VoteRecord(u64, Address),
+    ProposalCount,
     LastProposal(Address),
+    /// Accumulated vote weight for choice `index` on multi-choice proposal `id`.
+    ChoiceVotes(u64, u32),
 }
 
 // ---------------------------------------------------------------------------
@@ -43,6 +70,16 @@ pub enum PersistentKey {
 pub struct GovernanceStorage;
 
 impl GovernanceStorage {
+    // Amount of ledgers to extend persistent entries by (30 days)
+    pub const PERSISTENT_BUMP_AMOUNT: u32 = 518_400; // ~30 days @ 5s/ledger
+    pub const PERSISTENT_THRESHOLD: u32 = 17_280;   // ~1 day @ 5s/ledger
+
+    fn bump_persistent_ttl(env: &Env, key: &PersistentKey) {
+        // best-effort: extend the TTL for the provided persistent key
+        env.storage()
+            .persistent()
+            .extend_ttl(key, Self::PERSISTENT_THRESHOLD, Self::PERSISTENT_BUMP_AMOUNT);
+    }
     // --- Instance ---
 
     pub fn admin(env: &Env) -> Address {
@@ -69,11 +106,25 @@ impl GovernanceStorage {
         env.storage().instance().set(&InstanceKey::VotingToken, v);
     }
 
+    pub fn treasury_contract(env: &Env) -> Option<Address> {
+        env.storage().instance().get(&InstanceKey::TreasuryContract)
+    }
+    pub fn set_treasury_contract(env: &Env, v: &Address) {
+        env.storage().instance().set(&InstanceKey::TreasuryContract, v);
+    }
+
     pub fn proposal_count(env: &Env) -> u64 {
         env.storage().instance().get(&InstanceKey::ProposalCount).unwrap_or(0)
     }
     pub fn set_proposal_count(env: &Env, v: u64) {
         env.storage().instance().set(&InstanceKey::ProposalCount, &v);
+    }
+
+    pub fn active_proposal_count(env: &Env) -> u64 {
+        env.storage().instance().get(&InstanceKey::ActiveProposalCount).unwrap_or(0)
+    }
+    pub fn set_active_proposal_count(env: &Env, v: u64) {
+        env.storage().instance().set(&InstanceKey::ActiveProposalCount, &v);
     }
 
     pub fn min_proposal_balance(env: &Env) -> i128 {
@@ -131,46 +182,65 @@ impl GovernanceStorage {
     // --- Persistent ---
 
     pub fn proposal(env: &Env, id: u64) -> Option<Proposal> {
-        env.storage().persistent().get(&PersistentKey::Proposal(id))
+        let key = PersistentKey::Proposal(id);
+        let v = env.storage().persistent().get(&key);
+        if v.is_some() {
+            Self::bump_persistent_ttl(env, &key);
+        }
+        v
     }
     pub fn set_proposal(env: &Env, id: u64, v: &Proposal) {
-        env.storage().persistent().set(&PersistentKey::Proposal(id), v);
+        let key = PersistentKey::Proposal(id);
+        env.storage().persistent().set(&key, v);
+        Self::bump_persistent_ttl(env, &key);
     }
 
     pub fn has_voted(env: &Env, proposal_id: u64, voter: &Address) -> bool {
-        env.storage()
+        let key = PersistentKey::HasVoted(proposal_id, voter.clone());
+        let v = env
+            .storage()
             .persistent()
-            .get(&PersistentKey::HasVoted(proposal_id, voter.clone()))
-            .unwrap_or(false)
+            .get(&key)
+            .unwrap_or(false);
+        // bump TTL on read
+        Self::bump_persistent_ttl(env, &key);
+        v
     }
     pub fn set_has_voted(env: &Env, proposal_id: u64, voter: &Address, v: bool) {
-        env.storage()
-            .persistent()
-            .set(&PersistentKey::HasVoted(proposal_id, voter.clone()), &v);
+        let key = PersistentKey::HasVoted(proposal_id, voter.clone());
+        env.storage().persistent().set(&key, &v);
+        Self::bump_persistent_ttl(env, &key);
     }
 
     pub fn vote_record(env: &Env, proposal_id: u64, voter: &Address) -> Option<VoteRecord> {
-        env.storage()
-            .persistent()
-            .get(&PersistentKey::VoteRecord(proposal_id, voter.clone()))
+        let key = PersistentKey::VoteRecord(proposal_id, voter.clone());
+        let v = env.storage().persistent().get(&key);
+        if v.is_some() {
+            Self::bump_persistent_ttl(env, &key);
+        }
+        v
     }
     pub fn set_vote_record(env: &Env, proposal_id: u64, voter: &Address, v: &VoteRecord) {
-        env.storage()
-            .persistent()
-            .set(&PersistentKey::VoteRecord(proposal_id, voter.clone()), v);
+        let key = PersistentKey::VoteRecord(proposal_id, voter.clone());
+        env.storage().persistent().set(&key, v);
+        Self::bump_persistent_ttl(env, &key);
     }
 
     pub fn last_proposal_time(env: &Env, proposer: &Address) -> Option<u64> {
-        env.storage()
-            .persistent()
-            .get(&PersistentKey::LastProposal(proposer.clone()))
+        let key = PersistentKey::LastProposal(proposer.clone());
+        let v = env.storage().persistent().get(&key);
+        if v.is_some() {
+            Self::bump_persistent_ttl(env, &key);
+        }
+        v
     }
     pub fn set_last_proposal_time(env: &Env, proposer: &Address, v: u64) {
-        env.storage()
-            .persistent()
-            .set(&PersistentKey::LastProposal(proposer.clone()), &v);
+        let key = PersistentKey::LastProposal(proposer.clone());
+        env.storage().persistent().set(&key, &v);
+        Self::bump_persistent_ttl(env, &key);
     }
 
+    // Proposal count persisted to persistent storage to avoid instance write contention
     /// Convenience: check if a proposal is in a terminal state.
     pub fn is_terminal(state: &ProposalState) -> bool {
         matches!(
